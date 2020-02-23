@@ -78,9 +78,6 @@ class Field:
         # raw value in null struct
         self.nullvalue: str = None
 
-        # Filter function prefix
-        self.filterprefix: str = self.goname
-
     def reference_package(self, package):
         self.model.reference_package(package)
 
@@ -206,7 +203,7 @@ func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} 
 {% if field.relmodel -%}
 // Get{{ field.pubname }} returns {{ field.related_model_goname }}
 func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db *sql.DB) (*{{ field.related_model_goname }}, error) {
-    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.filterprefix }}Eq({{ receiver }}.{{ field.rawmember}}).First(db)
+    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({{ receiver }}.{{ field.rawmember}}).First(db)
 }
 
 // Set{{ field.pubname }} sets foreign key pointer to {{ field.related_model_goname }}
@@ -238,14 +235,14 @@ func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.gotype }
 {% endif -%}
 
 {%- if field.null -%}
-// {{ field.filterprefix }}IsNull filters for {{ field.goname }} being null
-func (qs {{ model.qsname }}) {{ field.filterprefix }}IsNull() {{ model.qsname }} {
+// {{ field.pubname }}IsNull filters for {{ field.goname }} being null
+func (qs {{ model.qsname }}) {{ field.pubname }}IsNull() {{ model.qsname }} {
     qs.conds = append(qs.conds, `{{ field.db_column | string }} IS NULL`)
     return qs
 }
 
-// {{ field.filterprefix }}IsNotNull filters for {{ field.goname }} being not null
-func (qs {{ model.qsname }}) {{ field.filterprefix }}IsNotNull() {{ model.qsname }} {
+// {{ field.pubname }}IsNotNull filters for {{ field.goname }} being not null
+func (qs {{ model.qsname }}) {{ field.pubname }}IsNotNull() {{ model.qsname }} {
     qs.conds = append(qs.conds, `{{ field.db_column | string }} IS NOT NULL`)
     return qs
 }
@@ -253,33 +250,33 @@ func (qs {{ model.qsname }}) {{ field.filterprefix }}IsNotNull() {{ model.qsname
 {% endif -%}
 
 {%- if not field.relmodel -%}
-// {{ field.filterprefix }}Eq filters for {{ field.goname }} being equal to argument
-func (qs {{ model.qsname }}) {{ field.filterprefix }}Eq(v {{ field.rawtype }}) {{ model.qsname }} {
+// {{ field.pubname }}Eq filters for {{ field.goname }} being equal to argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Eq(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} =`, v)
 }
 
-// {{ field.filterprefix }}Ne filters for {{ field.goname }} being not equal to argument
-func (qs {{ model.qsname }}) {{ field.filterprefix }}Ne(v {{ field.rawtype }}) {{ model.qsname }} {
+// {{ field.pubname }}Ne filters for {{ field.goname }} being not equal to argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Ne(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} <>`, v)
 }
 
-// {{ field.filterprefix }}Lt filters for {{ field.goname }} being less than argument
-func (qs {{ model.qsname }}) {{ field.filterprefix }}Lt(v {{ field.rawtype }}) {{ model.qsname }} {
+// {{ field.pubname }}Lt filters for {{ field.goname }} being less than argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Lt(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} <`, v)
 }
 
-// {{ field.filterprefix }}Le filters for {{ field.goname }} being less than or equal to argument
-func (qs {{ model.qsname }}) {{ field.filterprefix }}Le(v {{ field.rawtype }}) {{ model.qsname }} {
+// {{ field.pubname }}Le filters for {{ field.goname }} being less than or equal to argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Le(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} <=`, v)
 }
 
-// {{ field.filterprefix }}Gt filters for {{ field.goname }} being greater than argument
-func (qs {{ model.qsname }}) {{ field.filterprefix }}Gt(v {{ field.rawtype }}) {{ model.qsname }} {
+// {{ field.pubname }}Gt filters for {{ field.goname }} being greater than argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Gt(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} >`, v)
 }
 
-// {{ field.filterprefix }}Ge filters for {{ field.goname }} being greater than or equal to argument
-func (qs {{ model.qsname }}) {{ field.filterprefix }}Ge(v {{ field.rawtype }}) {{ model.qsname }} {
+// {{ field.pubname }}Ge filters for {{ field.goname }} being greater than or equal to argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Ge(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} >=`, v)
 }
 
