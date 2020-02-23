@@ -55,6 +55,7 @@ class Field:
 
         # Struct member name
         self.goname = to_camelcase(f.name)
+        self.pubname = self.goname
 
         # Struct member type
         self.gotype: str = None
@@ -74,6 +75,9 @@ class Field:
         # Null setting
         self.null: bool = self.field.null
 
+        # raw value in null struct
+        self.nullvalue: str = None
+
         # Filter function prefix
         self.filterprefix: str = self.goname
 
@@ -84,6 +88,23 @@ class Field:
     def db_column(self):
         _, column = self.field.get_attname_column()
         return column
+
+
+    @property
+    def related_model_goname(self):
+        if self.model.app == self.relmodel.app:
+            return self.relmodel.goname
+        
+        return "{}.{}".format(self.relmodel.app.label, self.relmodel.goname)
+
+
+    @property
+    def related_model_qsname(self):
+        if self.model.app == self.relmodel.app:
+            return self.relmodel.qsname
+        
+        return "{}.{}".format(self.relmodel.app.label, self.relmodel.qsname)
+
 
     def _get_type(self):
         f = self.field
@@ -108,7 +129,6 @@ class Field:
             if app.generate:
                 if app != self.model.app:
                     self.reference_package(app.gomodule)
-                self.getter = "Get{}".format(self.goname)
                 self.relmodel = self.model.get_app(mm.app_label).get_model(mm.model_name)
                 self._public = False
             f = mm.pk
@@ -147,6 +167,10 @@ class Field:
             else:
                 self.rawmember = self.goname
 
+        if self.null:
+            if self.nullvalue is None:
+                self.nullvalue = GO_NULLTYPES_VALUES.get(self.rawtype, None)
+
 
 _model_template = """// AUTO-GENERATED file for Django model {{ model.label }}
 
@@ -173,12 +197,47 @@ type {{ model.qsname }} struct {
 
 func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} {
     qs.condp = append(qs.condp, p)
-    qs.conds = append(qs.conds, fmt.Sprintf("%s $%d", c, len(qs.condparam)))
+    qs.conds = append(qs.conds, fmt.Sprintf("%s $%d", c, len(qs.condp)))
     return qs
 }
 
 {% for field in model.concrete_fields -%}
-{% if field.null -%}
+
+{% if field.relmodel -%}
+// Get{{ field.pubname }} returns {{ field.related_model_goname }}
+func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db *sql.DB) (*{{ field.related_model_goname }}, error) {
+    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.filterprefix }}Eq({{ receiver }}.{{ field.rawmember}}).First(db)
+}
+
+// Set{{ field.pubname }} sets foreign key pointer to {{ field.related_model_goname }}
+func ({{ receiver }} *{{ model.goname }}) Set{{ field.pubname }}(ptr *{{ field.related_model_goname }}) error {
+{%- if field.null %}
+    if ptr != nil {
+        {{ receiver }}.{{ field.goname }} = ptr.Get{{ field.relmodel.pk.pubname }}()
+    } else {
+        {{ receiver }}.{{ field.goname }}.Valid = false
+    }
+{%- else %}
+    if ptr != nil {
+        {{ receiver }}.{{ field.goname }} = ptr.Get{{ field.relmodel.pk.pubname }}().{{ field.relmodel.pk.nullvalue }}
+    } else {
+        return fmt.Errorf("{{ model.goname }}.Set{{ field.pubname }}: non-null field received null value")
+    }
+{%- endif %}
+
+    return nil
+}
+
+{% endif -%}
+{% if field.getter -%}
+// {{ field.getter }} returns {{ model.goname }}.{{ field.pubname }}
+func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.gotype }} {
+    return {{ receiver }}.{{ field.goname }}
+}
+
+{% endif -%}
+
+{%- if field.null -%}
 // {{ field.filterprefix }}IsNull filters for {{ field.goname }} being null
 func (qs {{ model.qsname }}) {{ field.filterprefix }}IsNull() {{ model.qsname }} {
     qs.conds = append(qs.conds, `{{ field.db_column | string }} IS NULL`)
@@ -190,7 +249,8 @@ func (qs {{ model.qsname }}) {{ field.filterprefix }}IsNotNull() {{ model.qsname
     qs.conds = append(qs.conds, `{{ field.db_column | string }} IS NOT NULL`)
     return qs
 }
-{%- endif %}
+
+{% endif -%}
 
 {%- if not field.relmodel -%}
 // {{ field.filterprefix }}Eq filters for {{ field.goname }} being equal to argument
@@ -222,17 +282,86 @@ func (qs {{ model.qsname }}) {{ field.filterprefix }}Gt(v {{ field.rawtype }}) {
 func (qs {{ model.qsname }}) {{ field.filterprefix }}Ge(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} >=`, v)
 }
-{%- endif %}
-{%- endfor %}
+
+{% endif -%}
+{%- endfor -%}
 
 func (qs {{ model.qsname }}) queryString() string {
-    var ret string = `SELECT {{ model.select_column_list }} FROM {{ model.db_table | string }}`
+    var ret string = `{{ select_stmt }}`
 
     if len(qs.conds) > 0 {
         ret = ret + " WHERE " + strings.Join(qs.conds, " AND ")        
     }
 
     return ret
+}
+
+// All returns all rows matching queryset filters
+func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
+    rows, err := db.Query(qs.queryString(), qs.condp...)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var ret []*{{ model.goname }}
+    for rows.Next() {
+        obj := {{ model.goname }}{{ "{}" }}
+        if err = rows.Scan({{ select_member_ptrs }}); err != nil {
+            return nil, err
+        }
+        ret = append(ret, &obj)
+    }
+
+    return ret, nil
+}
+
+// First returns the first row matching queryset filters, others are discarded
+func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
+    row := db.QueryRow(qs.queryString(), qs.condp...)
+
+    obj := {{ model.goname }}{{ "{}" }}
+    if err := row.Scan({{ select_member_ptrs }}); err != nil {
+        return nil, err
+    }
+
+    return &obj, nil
+}
+
+// insert operation
+func ({{ receiver }} *{{ model.goname }}) insert(db *sql.DB) error {
+    row := db.QueryRow(`{{ insert_stmt }}`, {{ insert_members }})
+
+    if err := row.Scan(&{{ receiver }}.{{ model.pk.goname }}); err != nil {
+        return err
+    }
+
+    return nil
+}
+
+// update operation
+func ({{ receiver }} *{{ model.goname }}) update(db *sql.DB) error {
+    _, err := db.Exec(`{{ update_stmt }}`, {{ update_members }})
+
+    return err
+}
+
+// Save inserts or updates record
+func ({{ receiver }} *{{ model.goname }}) Save(db *sql.DB) error {
+    if {{ receiver }}.{{ model.pk.goname }}.Valid {
+        return {{ receiver }}.update(db)
+    }
+    
+    return {{ receiver }}.insert(db)
+}
+
+// Delete removes row from database
+func ({{ receiver }} *{{ model.goname }}) Delete(db *sql.DB) error {
+    _, err := db.Exec(`{{ delete_stmt }}`, {{ receiver }}.{{ model.pk.goname }})
+
+    {{ receiver }}.{{ model.pk.goname }}.Valid = false
+
+    return err
 }
 
 """
@@ -245,7 +374,7 @@ class Model:
         self.model = m
 
         # referenced packages
-        self.packages = {"fmt", "database/sql"}
+        self.packages = {"fmt", "strings", "database/sql"}
 
         # This is the Go struct name
         self.goname = to_camelcase(self.model_name)
@@ -309,7 +438,6 @@ class Model:
             else:
                 self.nonpk_fields.append(field)
 
-        self.select_column_list = ', '.join(["\"{}\"".format(f.db_column) for f in self.concrete_fields])
 
     def get_app(self, label: str) -> 'Application':
         return self.app.get_app(label)
@@ -317,222 +445,53 @@ class Model:
     def generate(self, tmpl: jinja2.Template):
         path = self.gofspath
         with path.open('w') as fh:
-            fh.write(tmpl.render(model=self))
 
-    def _gen_field_filter_op(self, fh, f: Field, name, op, help):
-        fnPrefix = "{}".format(f.goname.capitalize())
+            receiver = self.goname[:1].lower()
 
-        fh.write("// {}{} filters {} to be {}\n".format(
-            fnPrefix, name, f.goname, help
-        ))
-        fh.write("func (qs {}) {}{}(v {}) {} {{\n".format(
-            self.qsname, fnPrefix, name, f.rawtype, self.qsname,
-        ))
-        fh.write("\tqs.condparam = append(qs.condparam, v)\n")
-        fh.write("\tmarker := fmt.Sprintf(\"$%d\", len(qs.condparam))\n")
-        fh.write("\tqs.condstr = append(qs.condstr, \"{} {} \" + marker)\n".format(
-            f.db_column, op,
-        ))
-        fh.write("\treturn qs\n")
-        fh.write("}\n\n")
+            select_stmt = 'SELECT {} FROM "{}"'.format(
+                ', '.join(["\"{}\"".format(f.db_column) for f in self.concrete_fields]),
+                self.db_table,
+            )
+            select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
 
+            non_pk_concrete_fields = [f for f in self.concrete_fields if f != self.pk]
 
-    def gen_field_filters(self, fh, f: Field):
-        fnPrefix = "{}".format(f.goname.capitalize())
+            insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({}) RETURNING "{}"'.format(
+                self.db_table, 
+                ', '.join(["\"{}\"".format(f.db_column) for f in non_pk_concrete_fields]),
+                ', '.join(["${}".format(i+1) for i in range(len(non_pk_concrete_fields))]),
+                self.pk.goname,
+            )
+            insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in non_pk_concrete_fields])
 
-        if f.null:
-            fh.write("// {}IsNull filters {} to be NULL\n".format(
-                fnPrefix, f.goname,
+            update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
+                self.db_table,
+                ', '.join(["\"{}\" = ${}".format(non_pk_concrete_fields[i].db_column, i+1) for i in range(len(non_pk_concrete_fields))]),
+                self.pk.goname,
+                "${}".format(len(non_pk_concrete_fields) + 1),
+            )
+            update_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in non_pk_concrete_fields + [self.pk]])
+
+            delete_stmt = 'DELETE FROM "{}" WHERE "{}" = $1'.format(
+                self.db_table,
+                self.pk.db_column,
+            )
+
+            fh.write(tmpl.render(
+                model=self,
+                receiver=receiver,
+
+                select_stmt=select_stmt,
+                select_member_ptrs=select_member_ptrs,
+
+                insert_stmt=insert_stmt,
+                insert_members=insert_members,
+
+                update_stmt=update_stmt,
+                update_members=update_members,
+
+                delete_stmt=delete_stmt,
             ))
-            fh.write("func (qs {}) {}IsNull() {} {{\n".format(
-                self.qsname, fnPrefix, self.qsname,
-            ))
-            fh.write("\tqs.condstr = append(qs.condstr, \"{} IS NULL\")\n".format(
-                f.db_column
-            ))
-            fh.write("\treturn qs\n")
-            fh.write("}\n\n")
-
-            fh.write("// {}IsNotNull filters {} NOT to be NULL\n".format(
-                fnPrefix, f.goname,
-            ))
-            fh.write("func (qs {}) {}IsNotNull() {} {{\n".format(
-                self.qsname, fnPrefix, self.qsname,
-            ))
-            fh.write("\tqs.condstr = append(qs.condstr, \"{} IS NOT NULL\")\n".format(
-                f.db_column
-            ))
-            fh.write("\treturn qs\n")
-            fh.write("}\n\n")
-
-        self._gen_field_filter_op(fh, f, "Eq", "=", "equal to argument")
-        self._gen_field_filter_op(fh, f, "Lt", "<", "less than argument")
-        self._gen_field_filter_op(fh, f, "Le", "<=", "less than or equal to argument")
-        self._gen_field_filter_op(fh, f, "Gt", ">", "greater than argument")
-        self._gen_field_filter_op(fh, f, "Ge", ">=", "greater than or equal to argument")
-
-    def gen_qs(self, fh):
-        fh.write("type {} struct {{\n".format(self.qsname))
-        fh.write("\tcondstr []string\n")
-        fh.write("\tcondparam []interface{}\n")
-        fh.write("}\n\n")
-
-        concrete_fields = [f for f in self.fields if f.gotype is not None]
-
-        for f in concrete_fields:
-            self.gen_field_filters(fh, f)
-
-        columns = ', '.join([f.db_column for f in concrete_fields])
-
-        fh.write("func (qs {}) columns() string {{\n".format(self.qsname))
-        fh.write("\treturn \"{}\"\n".format(columns))
-        fh.write("}\n\n")
-
-        fh.write("func (qs {}) queryString() string {{\n".format(self.qsname))
-        fh.write("\tvar s string = \"SELECT {} FROM {}\"\n".format(columns, self.db_table))
-        fh.write("\n")
-        fh.write("\tif len(qs.condstr) > 0 {\n")
-        fh.write("\t\ts = s + \" WHERE \" + strings.Join(qs.condstr, \" AND \")\n")
-        fh.write("\t}\n")
-        fh.write("\n")
-        fh.write("\treturn s\n")
-        fh.write("}\n\n")
-
-        # Query functions
-        fh.write("// All returns all matching records\n")
-        fh.write("func (qs {}) All(db *sql.DB) ([]*{}, error) {{\n".format(
-            self.qsname, self.goname))
-        fh.write("\trows, err := db.Query(qs.queryString(), qs.condparam...)\n")
-        fh.write("\tif err != nil {\n")
-        fh.write("\t\treturn nil, err\n")
-        fh.write("\t}\n")
-        fh.write("\tdefer rows.Close()\n")
-        fh.write("\n")
-        fh.write("\tvar ret []*{}\n".format(self.goname))
-        fh.write("\tfor rows.Next() {\n")
-        fh.write("\t\tobj := {}{{}}\n".format(self.goname))
-        fh.write("\t\tif err = rows.Scan(")
-        fh.write(', '.join(["&obj.{}".format(f.goname) for f in concrete_fields]))
-        fh.write("); err != nil {\n")
-        fh.write("\t\t\treturn nil, err\n")
-        fh.write("\t\t}\n")
-        fh.write("\t\tret = append(ret, &obj)\n")
-        fh.write("\t}\n")
-        fh.write("\n")
-        fh.write("\treturn ret, nil\n")
-        fh.write("}\n\n")
-
-        fh.write("// First returns the first matching record, discarding others if any\n")
-        fh.write("func (qs {}) First(db *sql.DB) (*{}, error) {{\n".format(
-            self.qsname, self.goname))
-        fh.write("\trow := db.QueryRow(qs.queryString(), qs.condparam...)\n")
-        fh.write("\tobj := {}{{}}\n".format(self.goname))
-        fh.write("\tif err := row.Scan(")
-        fh.write(', '.join(["&obj.{}".format(f.goname) for f in concrete_fields]))
-        fh.write("); err != nil {\n")
-        fh.write("\t\treturn nil, err\n")
-        fh.write("\t}\n")
-        fh.write("\n")
-        fh.write("\treturn &obj, nil\n")
-        fh.write("}\n\n")
-
-
-    def gen_model(self, fh):
-        fh.write("// {} model\n".format(self.goname))
-        fh.write("type {} struct {{\n".format(self.goname))
-
-        r = self.goname[:1].lower()
-
-        for f in self.fields:
-            fh.write("\t// {}\n".format(f.goname))
-
-            if f.gotype:
-
-                fh.write("\t")
-
-                fh.write("{} {} ".format(f.goname, f.gotype))
-
-                fh.write("\n")
-
-        fh.write("}\n\n")
-
-        # Generate queryset
-        self.gen_qs(fh)
-
-        for f in self.fields:
-            if f.getter and f.relmodel is None:
-                fh.write("func ({} *{}) {}() {} {{\n".format(
-                    r, self.goname, f.getter, f.gotype
-                ))
-                fh.write("\treturn {}.{}\n".format(r, f.goname))
-                fh.write("}\n\n")
-
-        for f in self.fields:
-            if f.getter and f.relmodel is not None:
-                fh.write("func ({} *{}) {}(db *sql.DB) (*{}, error) {{\n".format(
-                    r, self.goname, f.getter, f.relmodel.goname
-                ))
-                if f.field.null:
-                    fh.write("\tif !{}.{}.Valid {{\n".format(r, f.goname))
-                    fh.write("\t\treturn nil, nil\n")
-                    fh.write("\t}\n\n")
-
-                    fh.write("\treturn {}{{}}.{}Eq({}.{}.{}).First(db)\n".format(
-                        f.relmodel.qsname, f.relmodel.pk.goname.capitalize(), r, f.goname,
-                        GO_NULLTYPES_VALUES[f.gotype],
-                    ))
-                else:
-                    fh.write("\treturn {}{{}}.{}Eq({}.{}).First(db)\n".format(
-                        f.relmodel.qsname, f.relmodel.pk.goname.capitalize(), r, f.goname
-                    ))
-
-                fh.write("}\n\n")
-
-
-class Generator:
-    def __init__(self, app: str, model: str=None):
-        self._app = apps.get_app_config(app)
-        self._model = model
-        self.path = app
-        self.models = dict()
-
-    def gen_models(self):
-        if self._model:
-            models = [self._app.get_model(self._model)]
-        else:
-            models = self._app.get_models()
-
-        models = [GoModel(m) for m in models]
-
-        for m in models:
-            self.models[m.django_model_name] = m
-
-        for m in models:
-            m.parse_model(self.models)
-
-        packages = {"strings", "fmt", "time"}
-        for m in models:
-            m.get_packages(packages)
-
-        self._m = open('{}/models.go'.format(self.path), 'w')
-
-        self._write_package(self._m, packages)
-
-        for m in models:
-            m.gen_model(self._m)
-
-        self._m.close()
-
-    def _write_package(self, fh, packages):
-        fh.write("// Auto-generated file for {}\n\n".format(self._app))
-        fh.write("package {}\n\n".format(self.path))
-        fh.write("import (\n")
-        for p in packages:
-            fh.write("\t\"{}\"\n".format(p))
-        fh.write(")\n\n")
-
-        fh.write("var _ = time.Now\n\n")
-
 
 
 class Application:
