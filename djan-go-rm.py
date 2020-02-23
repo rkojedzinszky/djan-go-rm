@@ -78,6 +78,9 @@ class Field:
         # raw value in null struct
         self.nullvalue: str = None
 
+        # Is this field an autofield
+        self.autofield: bool = False
+
     def reference_package(self, package):
         self.model.reference_package(package)
 
@@ -106,18 +109,17 @@ class Field:
     def _get_type(self):
         f = self.field
 
+        # Autofields are read-only
         if isinstance(f, fields.BigAutoField):
             self._public = False
             self.getter = "Get{}".format(self.goname)
-            self.reference_package("database/sql")
-            self.null = True
+            self.autofield = True
             return GO_INT64
 
         if isinstance(f, fields.AutoField):
             self._public = False
             self.getter = "Get{}".format(self.goname)
-            self.reference_package("database/sql")
-            self.null = True
+            self.autofield = True
             return GO_INT32
 
         if isinstance(f, models.ForeignKey):
@@ -174,14 +176,15 @@ _model_template = """// AUTO-GENERATED file for Django model {{ model.label }}
 package {{ model.app.label }}
 
 import (
-{%- for p in model.packages %}
+{%- for p in model.packages | sort %}
     {{ p | string -}}
 {% endfor %}
 )
 
 // {{ model.goname }} mirrors model {{ model.label }}
 type {{ model.goname }} struct {
-{%- for field in model.concrete_fields %}
+    existsInDB bool
+{% for field in model.concrete_fields %}
     {{ field.goname }} {{ field.gotype }}
 {%- endfor %}
 }
@@ -210,13 +213,14 @@ func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db *sql.DB) (*{
 func ({{ receiver }} *{{ model.goname }}) Set{{ field.pubname }}(ptr *{{ field.related_model_goname }}) error {
 {%- if field.null %}
     if ptr != nil {
-        {{ receiver }}.{{ field.goname }} = ptr.Get{{ field.relmodel.pk.pubname }}()
+        {{ receiver }}.{{ field.rawmember }} = ptr.Get{{ field.relmodel.pk.pubname }}()
+        {{ receiver }}.{{ field.goname }}.Valid = true
     } else {
         {{ receiver }}.{{ field.goname }}.Valid = false
     }
 {%- else %}
     if ptr != nil {
-        {{ receiver }}.{{ field.goname }} = ptr.Get{{ field.relmodel.pk.pubname }}().{{ field.relmodel.pk.nullvalue }}
+        {{ receiver }}.{{ field.goname }} = ptr.Get{{ field.relmodel.pk.pubname }}()
     } else {
         return fmt.Errorf("{{ model.goname }}.Set{{ field.pubname }}: non-null field received null value")
     }
@@ -329,9 +333,11 @@ func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
 func ({{ receiver }} *{{ model.goname }}) insert(db *sql.DB) error {
     row := db.QueryRow(`{{ insert_stmt }}`, {{ insert_members }})
 
-    if err := row.Scan(&{{ receiver }}.{{ model.pk.goname }}); err != nil {
+    if err := row.Scan({{ insert_autoptr_members }}); err != nil {
         return err
     }
+
+    {{ receiver }}.existsInDB = true
 
     return nil
 }
@@ -345,7 +351,7 @@ func ({{ receiver }} *{{ model.goname }}) update(db *sql.DB) error {
 
 // Save inserts or updates record
 func ({{ receiver }} *{{ model.goname }}) Save(db *sql.DB) error {
-    if {{ receiver }}.{{ model.pk.goname }}.Valid {
+    if {{ receiver }}.existsInDB {
         return {{ receiver }}.update(db)
     }
     
@@ -356,7 +362,7 @@ func ({{ receiver }} *{{ model.goname }}) Save(db *sql.DB) error {
 func ({{ receiver }} *{{ model.goname }}) Delete(db *sql.DB) error {
     _, err := db.Exec(`{{ delete_stmt }}`, {{ receiver }}.{{ model.pk.goname }})
 
-    {{ receiver }}.{{ model.pk.goname }}.Valid = false
+    {{ receiver }}.existsInDB = false
 
     return err
 }
@@ -381,14 +387,18 @@ class Model:
 
         # All fields for the model
         self.fields: List[Field] = []
+
         # Concrete fields, i.e. which need a struct member
         self.concrete_fields: List[Field] = []
 
+        # User concrete fields, i.e. which are updated in database
+        self.user_fields: List[Field] = []
+
+        # Auto concrete fields, they need to be read back upon insert
+        self.auto_fields: List[Field] = []
+
         # PK field
         self.pk: Field = None
-
-        # Non-pk fields
-        self.nonpk_fields = []
 
         # escaped column-list for selects
         self.select_column_list: str = None
@@ -421,19 +431,23 @@ class Model:
             field = Field(self, f)
             field.setup()
 
+            # Skip not supported fields (e.g. unknown type, non-concrete, reverse relation)
             if field.rawtype is None:
                 continue
 
             self.fields.append(field)
-            if field.rawtype is not None:
-                self.concrete_fields.append(field)
+
+            self.concrete_fields.append(field)
+
+            if field.autofield:
+                self.auto_fields.append(field)
+            else:
+                self.user_fields.append(field)
 
             if getattr(f, 'primary_key', False):
                 if self.pk is not None:
                     raise RuntimeError("More than one PK detected on %s", self.model)
                 self.pk = field
-            else:
-                self.nonpk_fields.append(field)
 
 
     def get_app(self, label: str) -> 'Application':
@@ -451,23 +465,22 @@ class Model:
             )
             select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
 
-            non_pk_concrete_fields = [f for f in self.concrete_fields if f != self.pk]
-
-            insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({}) RETURNING "{}"'.format(
+            insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({}) RETURNING {}'.format(
                 self.db_table, 
-                ', '.join(["\"{}\"".format(f.db_column) for f in non_pk_concrete_fields]),
-                ', '.join(["${}".format(i+1) for i in range(len(non_pk_concrete_fields))]),
-                self.pk.goname,
+                ', '.join(["\"{}\"".format(f.db_column) for f in self.user_fields]),
+                ', '.join(["${}".format(i+1) for i in range(len(self.user_fields))]),
+                ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
             )
-            insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in non_pk_concrete_fields])
+            insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields])
+            insert_autoptr_members = ', '.join(["&{}.{}".format(receiver, f.goname) for f in self.auto_fields])
 
             update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
                 self.db_table,
-                ', '.join(["\"{}\" = ${}".format(non_pk_concrete_fields[i].db_column, i+1) for i in range(len(non_pk_concrete_fields))]),
+                ', '.join(["\"{}\" = ${}".format(self.user_fields[i].db_column, i+1) for i in range(len(self.user_fields))]),
                 self.pk.goname,
-                "${}".format(len(non_pk_concrete_fields) + 1),
+                "${}".format(len(self.user_fields) + 1),
             )
-            update_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in non_pk_concrete_fields + [self.pk]])
+            update_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields + [self.pk]])
 
             delete_stmt = 'DELETE FROM "{}" WHERE "{}" = $1'.format(
                 self.db_table,
@@ -483,6 +496,7 @@ class Model:
 
                 insert_stmt=insert_stmt,
                 insert_members=insert_members,
+                insert_autoptr_members=insert_autoptr_members,
 
                 update_stmt=update_stmt,
                 update_members=update_members,
