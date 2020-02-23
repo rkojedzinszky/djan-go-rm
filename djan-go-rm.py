@@ -213,14 +213,14 @@ func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db *sql.DB) (*{
 func ({{ receiver }} *{{ model.goname }}) Set{{ field.pubname }}(ptr *{{ field.related_model_goname }}) error {
 {%- if field.null %}
     if ptr != nil {
-        {{ receiver }}.{{ field.rawmember }} = ptr.Get{{ field.relmodel.pk.pubname }}()
+        {{ receiver }}.{{ field.rawmember }} = ptr.{{ field.relmodel.pkvalue }}
         {{ receiver }}.{{ field.goname }}.Valid = true
     } else {
         {{ receiver }}.{{ field.goname }}.Valid = false
     }
 {%- else %}
     if ptr != nil {
-        {{ receiver }}.{{ field.goname }} = ptr.Get{{ field.relmodel.pk.pubname }}()
+        {{ receiver }}.{{ field.goname }} = ptr.{{ field.relmodel.pkvalue }}
     } else {
         return fmt.Errorf("{{ model.goname }}.Set{{ field.pubname }}: non-null field received null value")
     }
@@ -331,11 +331,19 @@ func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
 
 // insert operation
 func ({{ receiver }} *{{ model.goname }}) insert(db *sql.DB) error {
+{%- if model.auto_fields %}
     row := db.QueryRow(`{{ insert_stmt }}`, {{ insert_members }})
 
     if err := row.Scan({{ insert_autoptr_members }}); err != nil {
         return err
     }
+{%- else %}
+    _, err := db.Exec(`{{ insert_stmt }}`, {{ insert_members }})
+
+    if err != nil {
+        return err
+    }
+{%- endif %}
 
     {{ receiver }}.existsInDB = true
 
@@ -400,6 +408,9 @@ class Model:
         # PK field
         self.pk: Field = None
 
+        # PK value public access
+        self.pkvalue: str = None
+
         # escaped column-list for selects
         self.select_column_list: str = None
 
@@ -449,6 +460,12 @@ class Model:
                     raise RuntimeError("More than one PK detected on %s", self.model)
                 self.pk = field
 
+        if self.pk:
+            if self.pkvalue is None:
+                if self.pk.getter:
+                    self.pkvalue = '{}()'.format(self.pk.getter)
+                else:
+                    self.pkvalue = self.pk.goname
 
     def get_app(self, label: str) -> 'Application':
         return self.app.get_app(label)
@@ -465,12 +482,15 @@ class Model:
             )
             select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
 
-            insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({}) RETURNING {}'.format(
+            insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
                 self.db_table, 
                 ', '.join(["\"{}\"".format(f.db_column) for f in self.user_fields]),
                 ', '.join(["${}".format(i+1) for i in range(len(self.user_fields))]),
-                ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
             )
+            if self.auto_fields:
+                insert_stmt += ' RETURNING {}'.format(
+                    ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
+                )
             insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields])
             insert_autoptr_members = ', '.join(["&{}.{}".format(receiver, f.goname) for f in self.auto_fields])
 
