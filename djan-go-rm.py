@@ -313,7 +313,7 @@ func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
 
     var ret []*{{ model.goname }}
     for rows.Next() {
-        obj := {{ model.goname }}{{ "{}" }}
+        obj := {{ model.goname }}{{ "{existsInDB: true}" }}
         if err = rows.Scan({{ select_member_ptrs }}); err != nil {
             return nil, err
         }
@@ -327,7 +327,7 @@ func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
 func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
     row := db.QueryRow(qs.queryString(), qs.condp...)
 
-    obj := {{ model.goname }}{{ "{}" }}
+    obj := {{ model.goname }}{{ "{existsInDB: true}" }}
     if err := row.Scan({{ select_member_ptrs }}); err != nil {
         return nil, err
     }
