@@ -94,7 +94,7 @@ class Field:
     def related_model_goname(self):
         if self.model.app == self.relmodel.app:
             return self.relmodel.goname
-        
+
         return "{}.{}".format(self.relmodel.app.label, self.relmodel.goname)
 
 
@@ -102,7 +102,7 @@ class Field:
     def related_model_qsname(self):
         if self.model.app == self.relmodel.app:
             return self.relmodel.qsname
-        
+
         return "{}.{}".format(self.relmodel.app.label, self.relmodel.qsname)
 
 
@@ -297,7 +297,7 @@ func (qs {{ model.qsname }}) queryString() string {
     var ret string = `{{ select_stmt }}`
 
     if len(qs.conds) > 0 {
-        ret = ret + " WHERE " + strings.Join(qs.conds, " AND ")        
+        ret = ret + " WHERE " + strings.Join(qs.conds, " AND ")
     }
 
     return ret
@@ -368,7 +368,7 @@ func ({{ receiver }} *{{ model.goname }}) Save(db *sql.DB) error {
     if {{ receiver }}.existsInDB {
         return {{ receiver }}.update(db)
     }
-    
+
     return {{ receiver }}.insert(db)
 }
 
@@ -489,7 +489,7 @@ class Model:
             select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
 
             insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
-                self.db_table, 
+                self.db_table,
                 ', '.join(["\"{}\"".format(f.db_column) for f in self.user_fields]),
                 ', '.join(["${}".format(i+1) for i in range(len(self.user_fields))]),
             )
