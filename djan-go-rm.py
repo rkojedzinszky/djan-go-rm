@@ -253,7 +253,13 @@ func (qs {{ model.qsname }}) {{ field.pubname }}IsNotNull() {{ model.qsname }} {
 
 {% endif -%}
 
-{%- if not field.relmodel -%}
+{%- if field.relmodel -%}
+// {{ field.pubname }}Eq filters for {{ field.goname }} being equal to argument
+func (qs {{ model.qsname }}) {{ field.pubname }}Eq(v *{{ field.related_model_goname }}) {{ model.qsname }} {
+    return qs.filter(`{{ field.db_column | string }} =`, v.{{ field.relmodel.pkvalue }})
+}
+
+{% else -%}
 // {{ field.pubname }}Eq filters for {{ field.goname }} being equal to argument
 func (qs {{ model.qsname }}) {{ field.pubname }}Eq(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} =`, v)
