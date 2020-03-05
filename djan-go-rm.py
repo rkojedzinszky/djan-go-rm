@@ -140,7 +140,7 @@ class Field:
             return GO_INT32
         if isinstance(f, fields.FloatField):
             return GO_FLOAT64
-        if isinstance(f, fields.DateTimeField):
+        if isinstance(f, (fields.DateField, fields.DateTimeField)):
             self.reference_package("time")
             return GO_DATETIME
         if isinstance(f, (fields.CharField, fields.TextField)):
@@ -193,6 +193,7 @@ type {{ model.goname }} struct {
 type {{ model.qsname }} struct {
     conds []string
     condp []interface{}
+    order []string
 }
 
 func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} {
@@ -291,16 +292,41 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Ge(v {{ field.rawtype }}) {{ mod
 }
 
 {% endif -%}
-{%- endfor -%}
 
-func (qs {{ model.qsname }}) queryString() string {
-    var ret string = `{{ select_stmt }}`
+// OrderBy{{ field.pubname }} sorts result by {{ field.pubname }} in ascending order
+func (qs {{ model.qsname }}) OrderBy{{ field.pubname }}() {{ model.qsname }} {
+    qs.order = append(qs.order, `{{ field.db_column | string }}`)
 
-    if len(qs.conds) > 0 {
-        ret = ret + " WHERE " + strings.Join(qs.conds, " AND ")
+    return qs
+}
+
+// OrderBy{{ field.pubname }}Desc sorts result by {{ field.pubname }} in descending order
+func (qs {{ model.qsname }}) OrderBy{{ field.pubname }}Desc() {{ model.qsname }} {
+    qs.order = append(qs.order, `{{ field.db_column | string }} DESC`)
+
+    return qs
+}
+
+{% endfor -%}
+
+func (qs {{ model.qsname }}) whereClause() string {
+    if len(qs.conds) == 0 {
+        return ""
     }
 
-    return ret
+    return " WHERE " + strings.Join(qs.conds, " AND ")
+}
+
+func (qs {{ model.qsname }}) orderByClause() string {
+    if len(qs.order) == 0 {
+        return ""
+    }
+
+    return " ORDER BY " + strings.Join(qs.order, ", ")
+}
+
+func (qs {{ model.qsname }}) queryString() string {
+    return `{{ select_stmt }}` + qs.whereClause() + qs.orderByClause()
 }
 
 // All returns all rows matching queryset filters
@@ -328,11 +354,16 @@ func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
     row := db.QueryRow(qs.queryString(), qs.condp...)
 
     obj := {{ model.goname }}{{ "{existsInDB: true}" }}
-    if err := row.Scan({{ select_member_ptrs }}); err != nil {
+    err := row.Scan({{ select_member_ptrs }})
+    switch err {
+    case nil:
+        return &obj, nil
+    case sql.ErrNoRows:
+        return nil, nil
+    default:
         return nil, err
     }
 
-    return &obj, nil
 }
 
 // insert operation
@@ -503,7 +534,7 @@ class Model:
             update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
                 self.db_table,
                 ', '.join(["\"{}\" = ${}".format(self.user_fields[i].db_column, i+1) for i in range(len(self.user_fields))]),
-                self.pk.goname,
+                self.pk.db_column,
                 "${}".format(len(self.user_fields) + 1),
             )
             update_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields + [self.pk]])
