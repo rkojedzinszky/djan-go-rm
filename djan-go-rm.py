@@ -140,7 +140,7 @@ class Field:
             return GO_INT32
         if isinstance(f, fields.FloatField):
             return GO_FLOAT64
-        if isinstance(f, (fields.DateField, fields.DateTimeField)):
+        if isinstance(f, (fields.DateField, fields.DateTimeField, fields.TimeField)):
             self.reference_package("time")
             return GO_DATETIME
         if isinstance(f, (fields.CharField, fields.TextField)):
@@ -170,6 +170,10 @@ class Field:
             if self.nullvalue is None:
                 self.nullvalue = GO_NULLTYPES_VALUES.get(self.rawtype, None)
 
+        if self.relmodel and self.null == False:
+            self.reference_package("fmt")
+
+
 
 _model_template = """// AUTO-GENERATED file for Django model {{ model.label }}
 
@@ -191,14 +195,18 @@ type {{ model.goname }} struct {
 
 // {{ model.qsname }} represents a queryset for {{ model.label }}
 type {{ model.qsname }} struct {
-    conds []string
-    condp []interface{}
+    condFragments []models.ConditionFragment
     order []string
 }
 
 func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} {
-    qs.condp = append(qs.condp, p)
-    qs.conds = append(qs.conds, fmt.Sprintf("%s $%d", c, len(qs.condp)))
+    qs.condFragments = append(
+        qs.condFragments,
+        &models.UnaryFragment{
+            Frag: c,
+            Param: p,
+        },
+    )
     return qs
 }
 
@@ -242,13 +250,23 @@ func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.gotype }
 {%- if field.null -%}
 // {{ field.pubname }}IsNull filters for {{ field.goname }} being null
 func (qs {{ model.qsname }}) {{ field.pubname }}IsNull() {{ model.qsname }} {
-    qs.conds = append(qs.conds, `{{ field.db_column | string }} IS NULL`)
+    qs.condFragments = append(
+        qs.condFragments,
+        &models.ConstantFragment{
+            Constant: `{{ field.db_column | string }} IS NULL`,
+        },
+    )
     return qs
 }
 
 // {{ field.pubname }}IsNotNull filters for {{ field.goname }} being not null
 func (qs {{ model.qsname }}) {{ field.pubname }}IsNotNull() {{ model.qsname }} {
-    qs.conds = append(qs.conds, `{{ field.db_column | string }} IS NOT NULL`)
+    qs.condFragments = append(
+        qs.condFragments,
+        &models.ConstantFragment{
+            Constant: `{{ field.db_column | string }} IS NOT NULL`,
+        },
+    )
     return qs
 }
 
@@ -259,6 +277,29 @@ func (qs {{ model.qsname }}) {{ field.pubname }}IsNotNull() {{ model.qsname }} {
 func (qs {{ model.qsname }}) {{ field.pubname }}Eq(v *{{ field.related_model_goname }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} =`, v.{{ field.relmodel.pkvalue }})
 }
+
+type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
+    qs {{ field.related_model_qsname }}
+}
+
+func (in *in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    s, p := in.qs.QueryId(c)
+
+    return `{{ field.db_column | string }} IN (` + s + `)`, p
+}
+
+
+func (qs {{ model.qsname }}) {{ field.pubname }}In(oqs {{ field.related_model_qsname }}) {{ model.qsname }} {
+    qs.condFragments = append(
+        qs.condFragments,
+        &in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}{
+            qs: oqs,
+        },
+    )
+
+    return qs
+}
+
 
 {% else -%}
 // {{ field.pubname }}Eq filters for {{ field.goname }} being equal to argument
@@ -309,12 +350,28 @@ func (qs {{ model.qsname }}) OrderBy{{ field.pubname }}Desc() {{ model.qsname }}
 
 {% endfor -%}
 
-func (qs {{ model.qsname }}) whereClause() string {
-    if len(qs.conds) == 0 {
-        return ""
+func (qs {{ model.qsname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    var conds []string
+    var condp []interface{}
+
+    for _, cond := range qs.condFragments {
+        s, p := cond.GetConditionFragment(c)
+
+        conds = append(conds, s)
+        condp = append(condp, p...)
     }
 
-    return " WHERE " + strings.Join(qs.conds, " AND ")
+    return strings.Join(conds, " AND "), condp
+}
+
+func (qs {{ model.qsname }}) whereClause(c *models.PositionalCounter) (string, []interface{}) {
+    if len(qs.condFragments) == 0 {
+        return "", nil
+    }
+
+    cond, params := qs.GetConditionFragment(c)
+
+    return " WHERE " + cond, params
 }
 
 func (qs {{ model.qsname }}) orderByClause() string {
@@ -325,13 +382,26 @@ func (qs {{ model.qsname }}) orderByClause() string {
     return " ORDER BY " + strings.Join(qs.order, ", ")
 }
 
-func (qs {{ model.qsname }}) queryString() string {
-    return `{{ select_stmt }}` + qs.whereClause() + qs.orderByClause()
+func (qs {{ model.qsname }}) queryFull() (string, []interface{}) {
+    c := &models.PositionalCounter{}
+
+    s, p := qs.whereClause(c)
+
+    return `{{ select_stmt }}` + s + qs.orderByClause(), p
+}
+
+// QueryId returns statement and parameters suitable for embedding in IN clause
+func (qs {{ model.qsname }}) QueryId(c *models.PositionalCounter) (string, []interface{}) {
+    s, p := qs.whereClause(c)
+
+    return `{{ select_id_stmt }}` + s, p
 }
 
 // All returns all rows matching queryset filters
 func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
-    rows, err := db.Query(qs.queryString(), qs.condp...)
+    s, p := qs.queryFull()
+
+    rows, err := db.Query(s, p...)
     if err != nil {
         return nil, err
     }
@@ -351,7 +421,9 @@ func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
 
 // First returns the first row matching queryset filters, others are discarded
 func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
-    row := db.QueryRow(qs.queryString(), qs.condp...)
+    s, p := qs.queryFull()
+
+    row := db.QueryRow(s, p...)
 
     obj := {{ model.goname }}{{ "{existsInDB: true}" }}
     err := row.Scan({{ select_member_ptrs }})
@@ -422,7 +494,7 @@ class Model:
         self.model = m
 
         # referenced packages
-        self.packages = {"fmt", "strings", "database/sql"}
+        self.packages = {"strings", "database/sql", os.path.join(args.gomodule, 'models')}
 
         # This is the Go struct name
         self.goname = to_camelcase(self.model_name)
@@ -518,6 +590,10 @@ class Model:
                 self.db_table,
             )
             select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
+            select_id_stmt = 'SELECT "{}" FROM "{}"'.format(
+                self.pk.db_column,
+                self.db_table,
+            )
 
             insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
                 self.db_table,
@@ -550,6 +626,7 @@ class Model:
 
                 select_stmt=select_stmt,
                 select_member_ptrs=select_member_ptrs,
+                select_id_stmt=select_id_stmt,
 
                 insert_stmt=insert_stmt,
                 insert_members=insert_members,
