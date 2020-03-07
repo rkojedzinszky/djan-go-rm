@@ -197,6 +197,7 @@ type {{ model.goname }} struct {
 type {{ model.qsname }} struct {
     condFragments []models.ConditionFragment
     order []string
+    forUpdate bool
 }
 
 func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} {
@@ -364,6 +365,13 @@ func (qs {{ model.qsname }}) GetConditionFragment(c *models.PositionalCounter) (
     return strings.Join(conds, " AND "), condp
 }
 
+// ForUpdate marks the queryset to use FOR UPDATE clause
+func (qs {{ model.qsname }}) ForUpdate() {{ model.qsname }} {
+    qs.forUpdate = true
+
+    return qs
+}
+
 func (qs {{ model.qsname }}) whereClause(c *models.PositionalCounter) (string, []interface{}) {
     if len(qs.condFragments) == 0 {
         return "", nil
@@ -386,8 +394,12 @@ func (qs {{ model.qsname }}) queryFull() (string, []interface{}) {
     c := &models.PositionalCounter{}
 
     s, p := qs.whereClause(c)
+    s += qs.orderByClause()
+    if qs.forUpdate {
+        s += " FOR UPDATE"
+    }
 
-    return `{{ select_stmt }}` + s + qs.orderByClause(), p
+    return `{{ select_stmt }}` + s, p
 }
 
 // QueryId returns statement and parameters suitable for embedding in IN clause
