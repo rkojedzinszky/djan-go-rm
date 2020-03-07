@@ -131,6 +131,7 @@ class Field:
                     self.reference_package(app.gomodule)
                 self.relmodel = self.model.get_app(mm.app_label).get_model(mm.model_name)
                 self._public = False
+                self.getter = "Get{}Raw".format(self.goname)
             f = mm.pk
 
         if isinstance(f, (fields.BooleanField, fields.NullBooleanField)):
