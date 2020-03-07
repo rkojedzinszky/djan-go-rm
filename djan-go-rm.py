@@ -1,6 +1,7 @@
 import os
 import argparse
 import pathlib
+import subprocess
 from typing import List, Mapping
 
 import jinja2
@@ -593,45 +594,45 @@ class Model:
 
     def generate(self, tmpl: jinja2.Template):
         path = self.gofspath
+
+        receiver = self.goname[:1].lower()
+
+        select_stmt = 'SELECT {} FROM "{}"'.format(
+            ', '.join(["\"{}\"".format(f.db_column) for f in self.concrete_fields]),
+            self.db_table,
+        )
+        select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
+        select_id_stmt = 'SELECT "{}" FROM "{}"'.format(
+            self.pk.db_column,
+            self.db_table,
+        )
+
+        insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
+            self.db_table,
+            ', '.join(["\"{}\"".format(f.db_column) for f in self.user_fields]),
+            ', '.join(["${}".format(i+1) for i in range(len(self.user_fields))]),
+        )
+        if self.auto_fields:
+            insert_stmt += ' RETURNING {}'.format(
+                ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
+            )
+        insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields])
+        insert_autoptr_members = ', '.join(["&{}.{}".format(receiver, f.goname) for f in self.auto_fields])
+
+        update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
+            self.db_table,
+            ', '.join(["\"{}\" = ${}".format(self.user_fields[i].db_column, i+1) for i in range(len(self.user_fields))]),
+            self.pk.db_column,
+            "${}".format(len(self.user_fields) + 1),
+        )
+        update_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields + [self.pk]])
+
+        delete_stmt = 'DELETE FROM "{}" WHERE "{}" = $1'.format(
+            self.db_table,
+            self.pk.db_column,
+        )
+
         with path.open('w') as fh:
-
-            receiver = self.goname[:1].lower()
-
-            select_stmt = 'SELECT {} FROM "{}"'.format(
-                ', '.join(["\"{}\"".format(f.db_column) for f in self.concrete_fields]),
-                self.db_table,
-            )
-            select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
-            select_id_stmt = 'SELECT "{}" FROM "{}"'.format(
-                self.pk.db_column,
-                self.db_table,
-            )
-
-            insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
-                self.db_table,
-                ', '.join(["\"{}\"".format(f.db_column) for f in self.user_fields]),
-                ', '.join(["${}".format(i+1) for i in range(len(self.user_fields))]),
-            )
-            if self.auto_fields:
-                insert_stmt += ' RETURNING {}'.format(
-                    ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
-                )
-            insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields])
-            insert_autoptr_members = ', '.join(["&{}.{}".format(receiver, f.goname) for f in self.auto_fields])
-
-            update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
-                self.db_table,
-                ', '.join(["\"{}\" = ${}".format(self.user_fields[i].db_column, i+1) for i in range(len(self.user_fields))]),
-                self.pk.db_column,
-                "${}".format(len(self.user_fields) + 1),
-            )
-            update_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields + [self.pk]])
-
-            delete_stmt = 'DELETE FROM "{}" WHERE "{}" = $1'.format(
-                self.db_table,
-                self.pk.db_column,
-            )
-
             fh.write(tmpl.render(
                 model=self,
                 receiver=receiver,
@@ -649,6 +650,8 @@ class Model:
 
                 delete_stmt=delete_stmt,
             ))
+
+        subprocess.check_call(["gofmt", "-w", path.as_posix()])
 
 
 class Application:
