@@ -215,7 +215,7 @@ func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} 
 
 {% if field.relmodel -%}
 // Get{{ field.pubname }} returns {{ field.related_model_goname }}
-func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db *sql.DB) (*{{ field.related_model_goname }}, error) {
+func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db models.DBInterface) (*{{ field.related_model_goname }}, error) {
     return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({{ receiver }}.{{ field.rawmember}}).First(db)
 }
 
@@ -410,7 +410,7 @@ func (qs {{ model.qsname }}) QueryId(c *models.PositionalCounter) (string, []int
 }
 
 // All returns all rows matching queryset filters
-func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
+func (qs {{ model.qsname }}) All(db models.DBInterface) ([]*{{ model.goname }}, error) {
     s, p := qs.queryFull()
 
     rows, err := db.Query(s, p...)
@@ -432,7 +432,7 @@ func (qs {{ model.qsname }}) All(db *sql.DB) ([]*{{ model.goname }}, error) {
 }
 
 // First returns the first row matching queryset filters, others are discarded
-func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
+func (qs {{ model.qsname }}) First(db models.DBInterface) (*{{ model.goname }}, error) {
     s, p := qs.queryFull()
 
     row := db.QueryRow(s, p...)
@@ -451,7 +451,7 @@ func (qs {{ model.qsname }}) First(db *sql.DB) (*{{ model.goname }}, error) {
 }
 
 // insert operation
-func ({{ receiver }} *{{ model.goname }}) insert(db *sql.DB) error {
+func ({{ receiver }} *{{ model.goname }}) insert(db models.DBInterface) error {
 {%- if model.auto_fields %}
     row := db.QueryRow(`{{ insert_stmt }}`, {{ insert_members }})
 
@@ -472,14 +472,14 @@ func ({{ receiver }} *{{ model.goname }}) insert(db *sql.DB) error {
 }
 
 // update operation
-func ({{ receiver }} *{{ model.goname }}) update(db *sql.DB) error {
+func ({{ receiver }} *{{ model.goname }}) update(db models.DBInterface) error {
     _, err := db.Exec(`{{ update_stmt }}`, {{ update_members }})
 
     return err
 }
 
 // Save inserts or updates record
-func ({{ receiver }} *{{ model.goname }}) Save(db *sql.DB) error {
+func ({{ receiver }} *{{ model.goname }}) Save(db models.DBInterface) error {
     if {{ receiver }}.existsInDB {
         return {{ receiver }}.update(db)
     }
@@ -488,7 +488,7 @@ func ({{ receiver }} *{{ model.goname }}) Save(db *sql.DB) error {
 }
 
 // Delete removes row from database
-func ({{ receiver }} *{{ model.goname }}) Delete(db *sql.DB) error {
+func ({{ receiver }} *{{ model.goname }}) Delete(db models.DBInterface) error {
     _, err := db.Exec(`{{ delete_stmt }}`, {{ receiver }}.{{ model.pk.goname }})
 
     {{ receiver }}.existsInDB = false
