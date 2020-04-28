@@ -573,15 +573,17 @@ class Model:
 
             self.concrete_fields.append(field)
 
-            if field.autofield:
-                self.auto_fields.append(field)
-            else:
-                self.user_fields.append(field)
-
-            if getattr(f, 'primary_key', False):
+            is_pkey = getattr(f, 'primary_key', False)
+            if is_pkey:
                 if self.pk is not None:
                     raise RuntimeError("More than one PK detected on %s", self.model)
                 self.pk = field
+
+            if field.autofield:
+                self.auto_fields.append(field)
+            elif not is_pkey:
+                self.user_fields.append(field)
+
 
         if self.pk:
             if self.pkvalue is None:
