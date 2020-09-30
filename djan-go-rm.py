@@ -1,6 +1,7 @@
 import os
 import argparse
 import pathlib
+import shutil
 import subprocess
 from typing import List, Mapping
 
@@ -773,3 +774,7 @@ if __name__ == '__main__':
 
     apps = Apps()
     apps.generate(tmpl, args.applications)
+
+    # copy interface.go
+    spath = pathlib.Path(__file__).parent / 'static' / 'interface.go'
+    shutil.copy(spath.as_posix(), 'models')
