@@ -336,6 +336,72 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Ge(v {{ field.rawtype }}) {{ mod
     return qs.filter(`{{ field.db_column | string }} >=`, v)
 }
 
+type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
+    values []interface{}
+}
+
+func (in *in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    if len(in.values) == 0 {
+        return `false`, nil
+    }
+
+    var params []string
+    for range in.values {
+        params = append(params, c.Get())
+    }
+
+    return `{{ field.db_column | string }} IN (` + strings.Join(params, ", ") + `)`, in.values
+}
+
+func (qs {{ model.qsname }}) {{ field.pubname }}In(values []{{ field.rawtype }}) {{ model.qsname }} {
+    var vals []interface{}
+    for _, v := range values {
+        vals = append(vals, v)
+    }
+
+    qs.condFragments = append(
+        qs.condFragments,
+        &in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}{
+            values: vals,
+        },
+    )
+
+    return qs
+}
+
+type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
+    values []interface{}
+}
+
+func (in *notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    if len(in.values) == 0 {
+        return `false`, nil
+    }
+
+    var params []string
+    for range in.values {
+        params = append(params, c.Get())
+    }
+
+    return `{{ field.db_column | string }} NOT IN (` + strings.Join(params, ", ") + `)`, in.values
+}
+
+func (qs {{ model.qsname }}) {{ field.pubname }}NotIn(values []{{ field.rawtype }}) {{ model.qsname }} {
+    var vals []interface{}
+    for _, v := range values {
+        vals = append(vals, v)
+    }
+
+    qs.condFragments = append(
+        qs.condFragments,
+        &notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}{
+            values: vals,
+        },
+    )
+
+    return qs
+}
+
 {% endif -%}
 
 // OrderBy{{ field.pubname }} sorts result by {{ field.pubname }} in ascending order
