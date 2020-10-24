@@ -57,7 +57,7 @@ class Field:
 
         # Struct member name
         self.goname = to_camelcase(f.name)
-        self.pubname = self.goname
+        self.pubname: str = None
 
         # Struct member type
         self.gotype: str = None
@@ -152,6 +152,11 @@ class Field:
         return None
 
     def setup(self):
+        if self.goname.lower() == 'id':
+            self.goname = 'ID'
+
+        self.pubname = self.goname
+
         self.rawtype = self._get_type()
         if self.gotype is None:
             if self.null:
@@ -161,7 +166,10 @@ class Field:
                 self.gotype = self.rawtype
 
         if self._public == False:
-            self.goname = self.goname[:1].lower() + self.goname[1:]
+            if self.goname.lower() == 'id':
+                self.goname = 'id'
+            else:
+                self.goname = self.goname[:1].lower() + self.goname[1:]
 
         if self.rawmember is None:
             if self.null:
