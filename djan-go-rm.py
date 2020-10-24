@@ -528,6 +528,107 @@ func (qs {{ model.qsname }}) First(db models.DBInterface) (*{{ model.goname }}, 
     }
 }
 
+// Delete deletes rows matching queryset filters
+func (qs {{ model.qsname }}) Delete(db models.DBInterface) (int64, error) {
+    c := &models.PositionalCounter{}
+
+    s, p := qs.whereClause(c)
+    s = `{{ delete_qs_stmt }}` + s
+
+    result, err := db.Exec(s, p...)
+    if err != nil {
+        return 0, err
+    }
+
+    return result.RowsAffected()
+}
+
+// Update returns an Update queryset inheriting all the filter conditions, which then can be
+// used to specify columns to be updated. At the end, .Exec() must be called to do the real operation.
+func (qs {{ model.qsname }}) Update() {{ model.uqsname }} {
+    return {{ model.uqsname }}{{ "{condFragments: qs.condFragments}" }}
+}
+
+// {{ model.uqsname }} represents an updated queryset for {{ model.label }}
+type {{ model.uqsname }} struct {
+    updates       []models.ConditionFragment
+    condFragments []models.ConditionFragment
+}
+
+func (uqs {{ model.uqsname }}) update(c string, v interface{}) {{ model.uqsname }} {
+    var frag models.ConditionFragment
+
+    if v == nil {
+        frag = &models.ConstantFragment{
+            Constant: c + " = NULL",
+        }
+    } else {
+        frag = &models.UnaryFragment{
+            Frag: c + " =",
+            Param: v,
+        }
+    }
+
+    uqs.updates = append(uqs.updates, frag)
+
+    return uqs
+}
+
+{% for field in model.concrete_fields -%}
+
+{% if field.relmodel -%}
+// Set{{ field.pubname }} sets foreign key pointer to {{ field.related_model_goname }}
+func (uqs {{ model.uqsname }}) Set{{ field.pubname }}(ptr *{{ field.related_model_goname }}) {{ model.uqsname }} {
+    if ptr != nil {
+        return uqs.update(`{{ field.db_column | string }}`, ptr.{{ field.relmodel.pkvalue }})
+    }
+
+    return uqs.update(`{{ field.db_column | string }}`, nil)
+}
+
+{%- else -%}
+
+// Set{{ field.pubname }} sets {{ field.pubname }} to the given value
+func (uqs {{ model.uqsname }}) Set{{ field.pubname }}(v {{ field.gotype }}) {{ model.uqsname }} {
+    return uqs.update(`{{ field.db_column | string }}`, v)
+}
+
+{% endif -%}
+
+{% endfor -%}
+
+// Exec executes the update operation
+func (uqs {{ model.uqsname }}) Exec(db models.DBInterface) (int64, error) {
+    if len(uqs.updates) == 0 {
+        return 0, nil
+    }
+
+    c := &models.PositionalCounter{}
+
+    var params []interface{}
+
+    var sets []string
+    for _, set := range uqs.updates {
+        s, p := set.GetConditionFragment(c)
+
+        sets = append(sets, s)
+        params = append(params, p...)
+    }
+
+    ws, wp := {{ model.qsname }}{{ "{condFragments: uqs.condFragments}" }}.whereClause(c)
+
+    st := `{{ update_qs_stmt }}` + strings.Join(sets, ", ") + ws
+
+    params = append(params, wp...)
+
+    result, err := db.Exec(st, params...)
+    if err != nil {
+        return 0, err
+    }
+
+    return result.RowsAffected()
+}
+
 // insert operation
 func ({{ receiver }} *{{ model.goname }}) insert(db models.DBInterface) error {
 {%- if model.auto_fields %}
@@ -591,6 +692,9 @@ class Model:
 
         # Queryset name for the Model
         self.qsname = "{}QS".format(self.goname)
+
+        # Update queryset name for the Model
+        self.uqsname = "{}UpdateQS".format(self.goname)
 
         # All fields for the model
         self.fields: List[Field] = []
@@ -711,6 +815,9 @@ class Model:
             self.pk.db_column,
         )
 
+        update_qs_stmt = 'UPDATE "{}" SET '.format(self.db_table)
+        delete_qs_stmt = 'DELETE FROM "{}"'.format(self.db_table)
+
         with path.open('w') as fh:
             fh.write(tmpl.render(
                 model=self,
@@ -728,6 +835,10 @@ class Model:
                 update_members=update_members,
 
                 delete_stmt=delete_stmt,
+
+                update_qs_stmt=update_qs_stmt,
+
+                delete_qs_stmt=delete_qs_stmt,
             ))
 
         subprocess.check_call(["gofmt", "-w", path.as_posix()])
