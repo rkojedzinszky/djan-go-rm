@@ -504,6 +504,8 @@ func (qs {{ model.qsname }}) All(db models.DBInterface) ([]*{{ model.goname }}, 
 func (qs {{ model.qsname }}) First(db models.DBInterface) (*{{ model.goname }}, error) {
     s, p := qs.queryFull()
 
+    s += " LIMIT 1"
+
     row := db.QueryRow(s, p...)
 
     obj := {{ model.goname }}{{ "{existsInDB: true}" }}
@@ -516,7 +518,6 @@ func (qs {{ model.qsname }}) First(db models.DBInterface) (*{{ model.goname }}, 
     default:
         return nil, err
     }
-
 }
 
 // insert operation
