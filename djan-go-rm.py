@@ -135,6 +135,10 @@ class Field:
                 self.getter = "Get{}Raw".format(self.goname)
             f = mm.pk
 
+        # many-to-many and many-to-one (reverse foreign key) relations not supported
+        if isinstance(f, (models.ManyToManyField, models.ManyToOneRel)):
+            return None
+
         if isinstance(f, (fields.BooleanField, fields.NullBooleanField)):
             return GO_BOOL
         if isinstance(f, (fields.BigIntegerField, fields.BigAutoField)):
