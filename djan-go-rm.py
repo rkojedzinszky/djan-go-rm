@@ -71,6 +71,10 @@ class Field:
         # if relmodel is defined too, then getter will return that model instead
         self.relmodel: 'Model' = None
 
+        # if reverse is defined, then the field is virtual, a reverse relation is in place
+        # and a queryset will be returned
+        self.reverse = False
+
         # Internal flag, during processing it may change, and will alter member names
         self._public = True
 
@@ -107,6 +111,12 @@ class Field:
 
         return "{}.{}".format(self.relmodel.app.label, self.relmodel.qsname)
 
+    @property
+    def remote_field(self) -> 'Field':
+        if self.field.remote_field:
+            return self.relmodel.get_field_by_raw_name(self.field.remote_field.name)
+
+        return None
 
     def _get_type(self):
         f = self.field
@@ -124,19 +134,30 @@ class Field:
             self.autofield = True
             return GO_INT32
 
-        if isinstance(f, models.ForeignKey):
+        if isinstance(f, (models.ForeignKey, models.ManyToOneRel)):
             mm: Options = f.related_model._meta
             app = self.model.get_app(mm.app_label)
             if app.generate:
-                if app != self.model.app:
-                    self.reference_package(app.gomodule)
                 self.relmodel = self.model.get_app(mm.app_label).get_model(mm.model_name)
                 self._public = False
-                self.getter = "Get{}Raw".format(self.goname)
+                if isinstance(f, models.ForeignKey):
+                    self.getter = "Get{}Raw".format(self.goname)
+                else: #  models.ManyToOneRel
+                    if app == self.model.app:
+                        self.getter = self.goname
+                        self.reverse = True
+                    return None
+
+                if app != self.model.app:
+                    self.reference_package(app.gomodule)
+
+            if isinstance(f, models.ManyToOneRel):
+                return None
+
             f = mm.pk
 
-        # many-to-many and many-to-one (reverse foreign key) relations not supported
-        if isinstance(f, (models.ManyToManyField, models.ManyToOneRel)):
+        # many-to-many relations not supported
+        if isinstance(f, (models.ManyToManyField)):
             return None
 
         if isinstance(f, (fields.BooleanField, fields.NullBooleanField)):
@@ -682,6 +703,14 @@ func ({{ receiver }} *{{ model.goname }}) Delete(db models.DBInterface) error {
     return err
 }
 
+{% for field in model.reverse_fields -%}
+// {{ field.getter }} returns the set of {{ field.relmodel.goname }} referencing this {{ model.goname }} instance
+func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.related_model_qsname }} {
+    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.remote_field.pubname }}Eq({{receiver}})
+}
+
+{% endfor %}
+
 """
 
 class Model:
@@ -715,6 +744,9 @@ class Model:
         # Auto concrete fields, they need to be read back upon insert
         self.auto_fields: List[Field] = []
 
+        # Reverse fields
+        self.reverse_fields: List[Field] = []
+
         # PK field
         self.pk: Field = None
 
@@ -743,6 +775,13 @@ class Model:
     def reference_package(self, package: str):
         self.packages.add(package)
 
+    def get_field_by_raw_name(self, name: str) -> Field:
+        for f in self.fields:
+            if f.field.name == name:
+                return f
+
+        return None
+
     def setup(self):
         """ Setup model """
 
@@ -752,7 +791,11 @@ class Model:
             field = Field(self, f)
             field.setup()
 
-            # Skip not supported fields (e.g. unknown type, non-concrete, reverse relation)
+            if field.reverse:
+                self.reverse_fields.append(field)
+                continue
+
+            # Skip not supported fields (e.g. unknown type, non-concrete)
             if field.rawtype is None:
                 continue
 
