@@ -146,10 +146,8 @@ class Field:
         if isinstance(f, (fields.DateField, fields.DateTimeField, fields.TimeField)):
             self.reference_package("time")
             return GO_DATETIME
-        if isinstance(f, (fields.CharField, fields.TextField)):
-            return GO_STRING
 
-        return None
+        return GO_STRING
 
     def setup(self):
         if self.goname.lower() == 'id':
