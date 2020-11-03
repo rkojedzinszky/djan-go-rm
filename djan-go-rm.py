@@ -227,6 +227,11 @@ func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} 
 {% if field.relmodel -%}
 // Get{{ field.pubname }} returns {{ field.related_model_goname }}
 func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db models.DBInterface) (*{{ field.related_model_goname }}, error) {
+{%- if field.null %}
+    if !{{ receiver }}.{{ field.goname }}.Valid {
+        return nil, nil
+    }
+{% endif %}
     return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({{ receiver }}.{{ field.rawmember}}).First(db)
 }
 
