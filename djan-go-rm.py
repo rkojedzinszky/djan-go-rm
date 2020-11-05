@@ -209,7 +209,15 @@ class Field:
 
 
 
-_model_template = """// AUTO-GENERATED file for Django model {{ model.label }}
+_model_template = """/*
+  AUTO-GENERATED file for Django model {{ model.label }}
+
+  Command used to generate:
+
+  {{ model.app.apps.commandline }}
+
+  https://github.com/rkojedzinszky/djan-go-rm
+*/
 
 package {{ model.app.label }}
 
@@ -962,8 +970,10 @@ class Apps:
     https://docs.djangoproject.com/en/3.0/ref/applications/#django.apps.AppConfig.label
     """
 
-    def __init__(self):
+    def __init__(self, commandline: str = None):
         self.apps: Mapping[str, Application] = dict()
+        self.commandline = commandline
+
         for djapp in apps.get_app_configs():
             app = Application(self, djapp)
             self.apps[app.label] = app
@@ -995,6 +1005,8 @@ if __name__ == '__main__':
     import sys, os
     sys.path.insert(0, os.getcwd())
 
+    commandline = 'DJANGO_SETTINGS_MODULE={} {}'.format(os.getenv('DJANGO_SETTINGS_MODULE'), ' '.join(sys.argv))
+
     import django
     django.setup()
 
@@ -1008,7 +1020,7 @@ if __name__ == '__main__':
     jenv.filters['string'] = lambda x: "\"{}\"".format(x)
     tmpl = jenv.from_string(_model_template)
 
-    apps = Apps()
+    apps = Apps(commandline=commandline)
     apps.generate(tmpl, args.applications)
 
     # copy interface.go
