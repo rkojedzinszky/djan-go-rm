@@ -848,16 +848,20 @@ class Model:
             self.db_table,
         )
 
+        insert_fields = [] + self.user_fields
+        if not self.pk.autofield:
+            insert_fields += [self.pk]
+
         insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
             self.db_table,
-            ', '.join(["\"{}\"".format(f.db_column) for f in self.user_fields]),
-            ', '.join(["${}".format(i+1) for i in range(len(self.user_fields))]),
+            ', '.join(["\"{}\"".format(f.db_column) for f in insert_fields]),
+            ', '.join(["${}".format(i+1) for i in range(len(insert_fields))]),
         )
         if self.auto_fields:
             insert_stmt += ' RETURNING {}'.format(
                 ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
             )
-        insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in self.user_fields])
+        insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in insert_fields])
         insert_autoptr_members = ', '.join(["&{}.{}".format(receiver, f.goname) for f in self.auto_fields])
 
         update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
