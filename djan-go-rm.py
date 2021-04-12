@@ -328,6 +328,11 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Eq(v *{{ field.related_model_gon
     return qs.filter(`{{ field.db_column | string }} =`, v.{{ field.relmodel.pkvalue }})
 }
 
+// {{ field.pubname }}RawEq filters for {{ field.goname }} being equal to raw argument
+func (qs {{ model.qsname }}) {{ field.pubname }}RawEq(v {{ field.rawtype }}) {{ model.qsname }} {
+    return qs.filter(`{{ field.db_column | string }} =`, v)
+}
+
 type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
     qs {{ field.related_model_qsname }}
 }
