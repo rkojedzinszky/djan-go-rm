@@ -531,6 +531,19 @@ func (qs {{ model.qsname }}) QueryId(c *models.PositionalCounter) (string, []int
     return `{{ select_id_stmt }}` + s, p
 }
 
+// Count returns the number of rows matching queryset filters
+func (qs {{ model.qsname }}) Count(db models.DBInterface) (count int, err error) {
+    c := &models.PositionalCounter{}
+
+    s, p := qs.whereClause(c)
+
+    row := db.QueryRow(`{{ select_count_stmt }}` + s, p...)
+
+    err = row.Scan(&count)
+
+    return
+}
+
 // All returns all rows matching queryset filters
 func (qs {{ model.qsname }}) All(db models.DBInterface) ([]*{{ model.goname }}, error) {
     s, p := qs.queryFull()
@@ -856,6 +869,10 @@ class Model:
             self.pk.db_column,
             self.db_table,
         )
+        select_count_stmt = 'SELECT COUNT("{}") FROM "{}"'.format(
+            self.pk.db_column,
+            self.db_table,
+        )
 
         insert_fields = [] + self.user_fields
         if not self.pk.autofield:
@@ -897,6 +914,7 @@ class Model:
                 select_stmt=select_stmt,
                 select_member_ptrs=select_member_ptrs,
                 select_id_stmt=select_id_stmt,
+                select_count_stmt=select_count_stmt,
 
                 insert_stmt=insert_stmt,
                 insert_members=insert_members,
