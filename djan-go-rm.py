@@ -487,6 +487,13 @@ func (qs {{ model.qsname }}) OrderBy{{ field.pubname }}Desc() {{ model.qsname }}
 
 {% endfor -%}
 
+// OrderByRandom randomizes result
+func (qs {{ model.qsname }}) OrderByRandom() {{ model.qsname }} {
+    qs.order = append(qs.order, `random()`)
+
+    return qs
+}
+
 // ForUpdate marks the queryset to use FOR UPDATE clause
 func (qs {{ model.qsname }}) ForUpdate() {{ model.qsname }} {
     qs.forUpdate = true
