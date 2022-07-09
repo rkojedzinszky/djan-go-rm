@@ -44,8 +44,10 @@ GO_NULLTYPES_VALUES = {
     GO_STRING: 'String',
 }
 
+
 def to_camelcase(word):
     return ''.join(x.capitalize() or '_' for x in word.split('_'))
+
 
 class Field:
     """ Field encapsulates a Django Model field """
@@ -97,14 +99,12 @@ class Field:
         _, column = self.field.get_attname_column()
         return column
 
-
     @property
     def related_model_goname(self):
         if self.model.app == self.relmodel.app:
             return self.relmodel.goname
 
         return "{}.{}".format(self.relmodel.app.label, self.relmodel.goname)
-
 
     @property
     def related_model_qsname(self):
@@ -144,7 +144,7 @@ class Field:
                 self._public = False
                 if isinstance(f, models.ForeignKey):
                     self.getter = "Get{}Raw".format(self.goname)
-                else: #  models.ManyToOneRel
+                else:  # models.ManyToOneRel
                     if app == self.model.app:
                         self.getter = self.goname
                         self.reverse = True
@@ -159,7 +159,7 @@ class Field:
             f = mm.pk
 
         # many-to-many relations not supported
-        if isinstance(f, (models.ManyToManyField)):
+        if isinstance(f, (models.ManyToManyField, models.ManyToManyRel)):
             return None
 
         if isinstance(f, (fields.BooleanField, fields.NullBooleanField)):
@@ -208,7 +208,6 @@ class Field:
 
         if self.relmodel and self.null == False:
             self.reference_package("fmt")
-
 
 
 _model_template = """/*
@@ -750,6 +749,7 @@ func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.related_
 
 """
 
+
 class Model:
     """ Model encapsulates a Django model """
 
@@ -851,7 +851,6 @@ class Model:
             elif not is_pkey:
                 self.user_fields.append(field)
 
-
         if self.pk:
             if self.pkvalue is None:
                 if self.pk.getter:
@@ -888,7 +887,7 @@ class Model:
         insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
             self.db_table,
             ', '.join(["\"{}\"".format(f.db_column) for f in insert_fields]),
-            ', '.join(["${}".format(i+1) for i in range(len(insert_fields))]),
+            ', '.join(["${}".format(i + 1) for i in range(len(insert_fields))]),
         )
         if self.auto_fields:
             insert_stmt += ' RETURNING {}'.format(
@@ -899,7 +898,7 @@ class Model:
 
         update_stmt = 'UPDATE "{}" SET {} WHERE "{}" = {}'.format(
             self.db_table,
-            ', '.join(["\"{}\" = ${}".format(self.user_fields[i].db_column, i+1) for i in range(len(self.user_fields))]),
+            ', '.join(["\"{}\" = ${}".format(self.user_fields[i].db_column, i + 1) for i in range(len(self.user_fields))]),
             self.pk.db_column,
             "${}".format(len(self.user_fields) + 1),
         )
@@ -960,38 +959,32 @@ class Application:
             model = Model(self, djmodel)
             self.models[model.model_name] = model
 
-
     @property
     def label(self):
         return self.app.label
 
-
     # This two should be in sync
+
     @property
     def gomodule(self) -> str:
         """ Represents go module path """
         return os.path.join(args.gomodule, 'models', self.label)
-
 
     @property
     def gofspath(self) -> pathlib.Path:
         """ Represents relative path on filesystem """
         return pathlib.Path(os.path.join('models', self.label))
 
-
     def setup(self):
         """ Setup Application """
         for _, model in self.models.items():
             model.setup()
 
-
     def get_app(self, label: str) -> 'Application':
         return self.apps.get_app(label)
 
-
     def get_model(self, model_name: str) -> Model:
         return self.models[model_name]
-
 
     def do_generate(self, tmpl: jinja2.Template):
         path = self.gofspath
@@ -1028,19 +1021,18 @@ class Apps:
             app = self.apps[label]
             app.do_generate(tmpl)
 
-
     def _setup(self):
         for _, app in self.apps.items():
             if app.generate:
                 app.setup()
-
 
     def get_app(self, label: str) -> Application:
         return self.apps[label]
 
 
 if __name__ == '__main__':
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.getcwd())
 
     commandline = 'DJANGO_SETTINGS_MODULE={} {}'.format(os.getenv('DJANGO_SETTINGS_MODULE'), ' '.join(sys.argv))
