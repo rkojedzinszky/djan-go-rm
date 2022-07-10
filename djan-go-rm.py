@@ -210,9 +210,10 @@ class Field:
             self.reference_package("fmt")
 
 
-_model_template = """/*
-  AUTO-GENERATED file for Django model {{ model.label }}
+_model_template = """
+// Code generated for Django model {{ model.label }}. DO NOT EDIT.
 
+/*
   Command used to generate:
 
   {{ model.app.apps.commandline }}
