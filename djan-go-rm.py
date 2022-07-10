@@ -382,6 +382,7 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Ne(v {{ field.rawtype }}) {{ mod
     return qs.filter(`{{ field.db_column | string }} <>`, v)
 }
 
+{% if field.rawtype != "bool" %}
 // {{ field.pubname }}Lt filters for {{ field.goname }} being less than argument
 func (qs {{ model.qsname }}) {{ field.pubname }}Lt(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} <`, v)
@@ -401,6 +402,7 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Gt(v {{ field.rawtype }}) {{ mod
 func (qs {{ model.qsname }}) {{ field.pubname }}Ge(v {{ field.rawtype }}) {{ model.qsname }} {
     return qs.filter(`{{ field.db_column | string }} >=`, v)
 }
+{% endif %}
 
 type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
     values []interface{}
