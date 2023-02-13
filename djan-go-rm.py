@@ -241,7 +241,7 @@ type {{ model.goname }} struct {
 type {{ model.qsname }} struct {
     condFragments models.AndFragment
     order []string
-    forUpdate bool
+    forClause string
 }
 
 func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} {
@@ -498,7 +498,28 @@ func (qs {{ model.qsname }}) OrderByRandom() {{ model.qsname }} {
 
 // ForUpdate marks the queryset to use FOR UPDATE clause
 func (qs {{ model.qsname }}) ForUpdate() {{ model.qsname }} {
-    qs.forUpdate = true
+    qs.forClause = " FOR UPDATE"
+
+    return qs
+}
+
+// ForUpdateNowait marks the queryset to use FOR UPDATE NOWAIT clause
+func (qs {{ model.qsname }}) ForUpdateNowait() {{ model.qsname }} {
+    qs.forClause = " FOR UPDATE NOWAIT"
+
+    return qs
+}
+
+// ForUpdateSkipLocked marks the queryset to use FOR UPDATE SKIP LOCKED clause
+func (qs {{ model.qsname }}) ForUpdateSkipLocked() {{ model.qsname }} {
+    qs.forClause = " FOR UPDATE SKIP LOCKED"
+
+    return qs
+}
+
+// ClearForUpdate clears FOR UPDATE clause set on queryset
+func (qs {{ model.qsname }}) ClearForUpdate() {{ model.qsname }} {
+    qs.forClause = ""
 
     return qs
 }
@@ -526,9 +547,7 @@ func (qs {{ model.qsname }}) queryFull() (string, []interface{}) {
 
     s, p := qs.whereClause(c)
     s += qs.orderByClause()
-    if qs.forUpdate {
-        s += " FOR UPDATE"
-    }
+    s += qs.forClause
 
     return `{{ select_stmt }}` + s, p
 }
