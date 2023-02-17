@@ -216,9 +216,6 @@ class Field:
             if self.nullvalue is None:
                 self.nullvalue = GO_NULLTYPES_VALUES.get(self.rawtype, None)
 
-        if self.relmodel and self.null == False:
-            self.reference_package("fmt")
-
 
 _model_template = """
 // Code generated for Django model {{ model.label }}. DO NOT EDIT.
@@ -246,6 +243,9 @@ type {{ model.goname }} struct {
     {{ field.goname }} {{ field.gotype }}
 {%- endfor %}
 }
+
+// {{ model.goname }}List is a list of {{ model.goname }}
+type {{ model.goname }}List []*{{ model.goname }}
 
 // {{ model.qsname }} represents a queryset for {{ model.label }}
 type {{ model.qsname }} struct {
@@ -583,7 +583,7 @@ func (qs {{ model.qsname }}) Count(ctx context.Context, db models.DBInterface) (
 }
 
 // All returns all rows matching queryset filters
-func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ([]*{{ model.goname }}, error) {
+func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ({{ model.goname }}List, error) {
     s, p := qs.queryFull()
 
     rows, err := db.Query(ctx, s, p...)
@@ -592,7 +592,7 @@ func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ([]
     }
     defer rows.Close()
 
-    var ret []*{{ model.goname }}
+    var ret {{ model.goname }}List
     for rows.Next() {
         obj := {{ model.goname }}{{ "{existsInDB: true}" }}
         if err = rows.Scan({{ select_member_ptrs }}); err != nil {
@@ -771,6 +771,65 @@ func ({{ receiver }} *{{ model.goname }}) Delete(ctx context.Context, db models.
     return err
 }
 
+// Save saves all elements, optimizing inserts in a batch
+func ({{ receiver }}l {{ model.goname }}List)Save(ctx context.Context, db models.DBInterface) error {
+    var inserts {{ model.goname }}List
+
+    for _, {{ receiver }} := range {{ receiver }}l {
+        if {{ receiver }}.existsInDB {
+            if err := {{ receiver }}.update(ctx, db); err != nil {
+                return err
+            }
+        } else {
+            inserts = append(inserts, {{ receiver }})
+        }
+    }
+
+    if len(inserts) == 0 {
+        return nil
+    }
+
+    vva := make([]string, 0, len(inserts))
+    vaa := make([]any, 0, {{ insert_stmt_column_count }} * len(inserts))
+    offs := 1
+    for _, {{ receiver }} := range inserts {
+        vva = append(vva, {{ insert_stmt_values_template }})
+        vaa = append(vaa, {{ insert_members }})
+        offs += {{ insert_stmt_column_count }}
+    }
+
+    qs := `{{ batch_insert_stmt}} ` + strings.Join(vva, ", "){%- if model.auto_fields %} + ` {{ batch_insert_returning }}`{% endif %}
+
+{%- if model.auto_fields %}
+    rows, err := db.Query(ctx, qs, vaa...)
+{%- else %}
+    _, err := db.Exec(ctx, qs, vaa...)
+{%- endif %}
+
+    if err != nil {
+        return err
+    }
+
+{%- if model.auto_fields %}
+    defer rows.Close()
+{% endif %}
+
+    for _, {{ receiver }} := range inserts {
+{%- if model.auto_fields %}
+        if !rows.Next() {
+            return rows.Err()
+        }
+
+        if err := rows.Scan({{ insert_autoptr_members }}); err != nil {
+            return err
+        }
+{% endif %}
+        {{ receiver }}.existsInDB = true
+    }
+
+    return nil
+}
+
 {% for field in model.reverse_fields -%}
 // {{ field.getter }} returns the set of {{ field.relmodel.goname }} referencing this {{ model.goname }} instance
 func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.related_model_qsname }} {
@@ -790,7 +849,7 @@ class Model:
         self.model = m
 
         # referenced packages
-        self.packages = {"context", "strings", "database/sql", os.path.join(args.gomodule, 'models')}
+        self.packages = {"context", "fmt", "strings", "database/sql", os.path.join(args.gomodule, 'models')}
 
         # This is the Go struct name
         self.goname = to_camelcase(self.model_name)
@@ -916,15 +975,25 @@ class Model:
         if not self.pk.autofield:
             insert_fields += [self.pk]
 
-        insert_stmt = 'INSERT INTO "{}" ({}) VALUES ({})'.format(
+        batch_insert_stmt = 'INSERT INTO "{}" ({}) VALUES'.format(
             self.db_table,
             ', '.join(["\"{}\"".format(f.db_column) for f in insert_fields]),
+        )
+        insert_stmt = '{} ({})'.format(
+            batch_insert_stmt,
             ', '.join(["${}".format(i + 1) for i in range(len(insert_fields))]),
         )
+        insert_stmt_column_count = len(insert_fields)
+        insert_stmt_values_template = 'fmt.Sprintf("({})", {})'.format(
+            ', '.join(["$%d" for i in range(len(insert_fields))]),
+            ', '.join(['offs + {}'.format(i) for i in range(len(insert_fields))]),
+        )
+        batch_insert_returning = ''
         if self.auto_fields:
-            insert_stmt += ' RETURNING {}'.format(
+            batch_insert_returning = 'RETURNING {}'.format(
                 ', '.join(["\"{}\"".format(f.db_column) for f in self.auto_fields]),
             )
+            insert_stmt += ' ' + batch_insert_returning
         insert_members = ', '.join(["{}.{}".format(receiver, f.goname) for f in insert_fields])
         insert_autoptr_members = ', '.join(["&{}.{}".format(receiver, f.goname) for f in self.auto_fields])
 
@@ -954,7 +1023,11 @@ class Model:
                 select_id_stmt=select_id_stmt,
                 select_count_stmt=select_count_stmt,
 
+                batch_insert_stmt=batch_insert_stmt,
                 insert_stmt=insert_stmt,
+                insert_stmt_column_count=insert_stmt_column_count,
+                insert_stmt_values_template=insert_stmt_values_template,
+                batch_insert_returning=batch_insert_returning,
                 insert_members=insert_members,
                 insert_autoptr_members=insert_autoptr_members,
 
