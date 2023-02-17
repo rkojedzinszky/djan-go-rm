@@ -12,6 +12,7 @@ from django.apps import AppConfig, apps
 from django.db import models
 from django.db.models import fields
 from django.db.models.options import Options
+from django.contrib.postgres import fields as pgfields
 
 GO_BOOL = "bool"
 GO_NULLBOOL = "sql.NullBool"
@@ -162,6 +163,15 @@ class Field:
         if isinstance(f, (models.ManyToManyField, models.ManyToManyRel)):
             return None
 
+        # Array support for basic types
+        arrayprefix = ''
+        while isinstance(f, pgfields.ArrayField):
+            arrayprefix = '[]' + arrayprefix
+            f = f.base_field
+
+        return arrayprefix + self._get_type_basic(f)
+
+    def _get_type_basic(self, f):
         if isinstance(f, (fields.BooleanField, fields.NullBooleanField)):
             return GO_BOOL
         if isinstance(f, (fields.BigIntegerField, fields.BigAutoField)):
