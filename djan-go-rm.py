@@ -275,13 +275,13 @@ func (qs {{ model.qsname }}) Or(exprs ...{{ model.qsname }}) {{ model.qsname }} 
 
 {% if field.relmodel -%}
 // Get{{ field.pubname }} returns {{ field.related_model_goname }}
-func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(db models.DBInterface) (*{{ field.related_model_goname }}, error) {
+func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(ctx context.Context, db models.DBInterface) (*{{ field.related_model_goname }}, error) {
 {%- if field.null %}
     if !{{ receiver }}.{{ field.goname }}.Valid {
         return nil, nil
     }
 {% endif %}
-    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({{ receiver }}.{{ field.rawmember}}).First(db)
+    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({{ receiver }}.{{ field.rawmember}}).First(ctx, db)
 }
 
 // Set{{ field.pubname }} sets foreign key pointer to {{ field.related_model_goname }}
@@ -560,12 +560,12 @@ func (qs {{ model.qsname }}) QueryId(c *models.PositionalCounter) (string, []int
 }
 
 // Count returns the number of rows matching queryset filters
-func (qs {{ model.qsname }}) Count(db models.DBInterface) (count int, err error) {
+func (qs {{ model.qsname }}) Count(ctx context.Context, db models.DBInterface) (count int, err error) {
     c := &models.PositionalCounter{}
 
     s, p := qs.whereClause(c)
 
-    row := db.QueryRow(`{{ select_count_stmt }}` + s, p...)
+    row := db.QueryRow(ctx, `{{ select_count_stmt }}` + s, p...)
 
     err = row.Scan(&count)
 
@@ -573,10 +573,10 @@ func (qs {{ model.qsname }}) Count(db models.DBInterface) (count int, err error)
 }
 
 // All returns all rows matching queryset filters
-func (qs {{ model.qsname }}) All(db models.DBInterface) ([]*{{ model.goname }}, error) {
+func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ([]*{{ model.goname }}, error) {
     s, p := qs.queryFull()
 
-    rows, err := db.Query(s, p...)
+    rows, err := db.Query(ctx, s, p...)
     if err != nil {
         return nil, err
     }
@@ -595,12 +595,12 @@ func (qs {{ model.qsname }}) All(db models.DBInterface) ([]*{{ model.goname }}, 
 }
 
 // First returns the first row matching queryset filters, others are discarded
-func (qs {{ model.qsname }}) First(db models.DBInterface) (*{{ model.goname }}, error) {
+func (qs {{ model.qsname }}) First(ctx context.Context, db models.DBInterface) (*{{ model.goname }}, error) {
     s, p := qs.queryFull()
 
     s += " LIMIT 1"
 
-    row := db.QueryRow(s, p...)
+    row := db.QueryRow(ctx, s, p...)
 
     obj := {{ model.goname }}{{ "{existsInDB: true}" }}
     err := row.Scan({{ select_member_ptrs }})
@@ -615,18 +615,18 @@ func (qs {{ model.qsname }}) First(db models.DBInterface) (*{{ model.goname }}, 
 }
 
 // Delete deletes rows matching queryset filters
-func (qs {{ model.qsname }}) Delete(db models.DBInterface) (int64, error) {
+func (qs {{ model.qsname }}) Delete(ctx context.Context, db models.DBInterface) (int64, error) {
     c := &models.PositionalCounter{}
 
     s, p := qs.whereClause(c)
     s = `{{ delete_qs_stmt }}` + s
 
-    result, err := db.Exec(s, p...)
+    result, err := db.Exec(ctx, s, p...)
     if err != nil {
         return 0, err
     }
 
-    return result.RowsAffected()
+    return result.RowsAffected(), nil
 }
 
 // Update returns an Update queryset inheriting all the filter conditions, which then can be
@@ -684,7 +684,7 @@ func (uqs {{ model.uqsname }}) Set{{ field.pubname }}(v {{ field.gotype }}) {{ m
 {% endfor -%}
 
 // Exec executes the update operation
-func (uqs {{ model.uqsname }}) Exec(db models.DBInterface) (int64, error) {
+func (uqs {{ model.uqsname }}) Exec(ctx context.Context, db models.DBInterface) (int64, error) {
     if len(uqs.updates) == 0 {
         return 0, nil
     }
@@ -707,24 +707,24 @@ func (uqs {{ model.uqsname }}) Exec(db models.DBInterface) (int64, error) {
 
     params = append(params, wp...)
 
-    result, err := db.Exec(st, params...)
+    result, err := db.Exec(ctx, st, params...)
     if err != nil {
         return 0, err
     }
 
-    return result.RowsAffected()
+    return result.RowsAffected(), nil
 }
 
 // insert operation
-func ({{ receiver }} *{{ model.goname }}) insert(db models.DBInterface) error {
+func ({{ receiver }} *{{ model.goname }}) insert(ctx context.Context, db models.DBInterface) error {
 {%- if model.auto_fields %}
-    row := db.QueryRow(`{{ insert_stmt }}`, {{ insert_members }})
+    row := db.QueryRow(ctx, `{{ insert_stmt }}`, {{ insert_members }})
 
     if err := row.Scan({{ insert_autoptr_members }}); err != nil {
         return err
     }
 {%- else %}
-    _, err := db.Exec(`{{ insert_stmt }}`, {{ insert_members }})
+    _, err := db.Exec(ctx, `{{ insert_stmt }}`, {{ insert_members }})
 
     if err != nil {
         return err
@@ -737,24 +737,24 @@ func ({{ receiver }} *{{ model.goname }}) insert(db models.DBInterface) error {
 }
 
 // update operation
-func ({{ receiver }} *{{ model.goname }}) update(db models.DBInterface) error {
-    _, err := db.Exec(`{{ update_stmt }}`, {{ update_members }})
+func ({{ receiver }} *{{ model.goname }}) update(ctx context.Context, db models.DBInterface) error {
+    _, err := db.Exec(ctx, `{{ update_stmt }}`, {{ update_members }})
 
     return err
 }
 
 // Save inserts or updates record
-func ({{ receiver }} *{{ model.goname }}) Save(db models.DBInterface) error {
+func ({{ receiver }} *{{ model.goname }}) Save(ctx context.Context, db models.DBInterface) error {
     if {{ receiver }}.existsInDB {
-        return {{ receiver }}.update(db)
+        return {{ receiver }}.update(ctx, db)
     }
 
-    return {{ receiver }}.insert(db)
+    return {{ receiver }}.insert(ctx, db)
 }
 
 // Delete removes row from database
-func ({{ receiver }} *{{ model.goname }}) Delete(db models.DBInterface) error {
-    _, err := db.Exec(`{{ delete_stmt }}`, {{ receiver }}.{{ model.pk.goname }})
+func ({{ receiver }} *{{ model.goname }}) Delete(ctx context.Context, db models.DBInterface) error {
+    _, err := db.Exec(ctx, `{{ delete_stmt }}`, {{ receiver }}.{{ model.pk.goname }})
 
     {{ receiver }}.existsInDB = false
 
@@ -780,7 +780,7 @@ class Model:
         self.model = m
 
         # referenced packages
-        self.packages = {"strings", "database/sql", os.path.join(args.gomodule, 'models')}
+        self.packages = {"context", "strings", "database/sql", os.path.join(args.gomodule, 'models')}
 
         # This is the Go struct name
         self.goname = to_camelcase(self.model_name)
