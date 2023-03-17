@@ -193,6 +193,9 @@ class Field:
         self.pubname = self.goname
 
         self.rawtype = self._get_type()
+        if self.rawtype is None:
+            return
+
         if self.gotype is None:
             if self.null:
                 self.reference_package("database/sql")
@@ -200,7 +203,7 @@ class Field:
             else:
                 self.gotype = self.rawtype
 
-        if self._public == False:
+        if not self._public:
             if self.goname.lower() == 'id':
                 self.goname = 'id'
             else:
@@ -609,7 +612,7 @@ func (qs {{ model.qsname }}) First(ctx context.Context, db models.DBInterface) (
     switch err {
     case nil:
         return &obj, nil
-    case sql.ErrNoRows:
+    case pgx.ErrNoRows:
         return nil, nil
     default:
         return nil, err
@@ -841,7 +844,7 @@ class Model:
         self.model = m
 
         # referenced packages
-        self.packages = {"context", "fmt", "strings", "database/sql", os.path.join(args.gomodule, 'models')}
+        self.packages = {"context", "fmt", "strings", "github.com/jackc/pgx/v5", os.path.join(args.gomodule, 'models')}
 
         # This is the Go struct name
         self.goname = to_camelcase(self.model_name)
