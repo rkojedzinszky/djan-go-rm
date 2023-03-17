@@ -415,21 +415,19 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Ge(v {{ field.rawtype }}) {{ mod
 }
 {% endif %}
 
-type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
-    values []interface{}
-}
+type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} []interface{}
 
-func (in *in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
-    if len(in.values) == 0 {
+func (in in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    if len(in) == 0 {
         return `false`, nil
     }
 
     var params []string
-    for range in.values {
+    for range in {
         params = append(params, c.Get())
     }
 
-    return `{{ field.db_column | string }} IN (` + strings.Join(params, ", ") + `)`, in.values
+    return `{{ field.db_column | string }} IN (` + strings.Join(params, ", ") + `)`, in
 }
 
 func (qs {{ model.qsname }}) {{ field.pubname }}In(values []{{ field.rawtype }}) {{ model.qsname }} {
@@ -440,29 +438,25 @@ func (qs {{ model.qsname }}) {{ field.pubname }}In(values []{{ field.rawtype }})
 
     qs.condFragments = append(
         qs.condFragments,
-        &in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}{
-            values: vals,
-        },
+        in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}(vals),
     )
 
     return qs
 }
 
-type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
-    values []interface{}
-}
+type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} []interface{}
 
-func (in *notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
-    if len(in.values) == 0 {
+func (in notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    if len(in) == 0 {
         return `false`, nil
     }
 
     var params []string
-    for range in.values {
+    for range in {
         params = append(params, c.Get())
     }
 
-    return `{{ field.db_column | string }} NOT IN (` + strings.Join(params, ", ") + `)`, in.values
+    return `{{ field.db_column | string }} NOT IN (` + strings.Join(params, ", ") + `)`, in
 }
 
 func (qs {{ model.qsname }}) {{ field.pubname }}NotIn(values []{{ field.rawtype }}) {{ model.qsname }} {
@@ -473,9 +467,7 @@ func (qs {{ model.qsname }}) {{ field.pubname }}NotIn(values []{{ field.rawtype 
 
     qs.condFragments = append(
         qs.condFragments,
-        &notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}{
-            values: vals,
-        },
+        notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}(vals),
     )
 
     return qs
