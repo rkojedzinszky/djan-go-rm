@@ -92,9 +92,6 @@ class Field:
         # Is this field an autofield
         self.autofield: bool = False
 
-    def reference_package(self, package):
-        self.model.reference_package(package)
-
     @property
     def db_column(self):
         _, column = self.field.get_attname_column()
@@ -152,7 +149,7 @@ class Field:
                     return None
 
                 if app != self.model.app:
-                    self.reference_package(app.gomodule)
+                    self.model.model_packages.add(app.gomodule)
 
             if isinstance(f, models.ManyToOneRel):
                 return None
@@ -181,7 +178,7 @@ class Field:
         if isinstance(f, fields.FloatField):
             return GO_FLOAT64
         if isinstance(f, (fields.DateField, fields.DateTimeField, fields.TimeField)):
-            self.reference_package("time")
+            self.model.core_packages.add("time")
             return GO_DATETIME
 
         return GO_STRING
@@ -198,7 +195,7 @@ class Field:
 
         if self.gotype is None:
             if self.null:
-                self.reference_package("database/sql")
+                self.model.core_packages.add("database/sql")
                 self.gotype = GO_NULLTYPES.get(self.rawtype, self.rawtype)
             else:
                 self.gotype = self.rawtype
@@ -234,7 +231,15 @@ _model_template = """
 package {{ model.app.label }}
 
 import (
-{%- for p in model.packages | sort %}
+{% for p in model.core_packages %}
+    {{ p | string -}}
+{% endfor %}
+
+{% for p in model.external_packages %}
+    {{ p | string -}}
+{% endfor %}
+
+{% for p in model.model_packages %}
     {{ p | string -}}
 {% endfor %}
 )
@@ -844,7 +849,9 @@ class Model:
         self.model = m
 
         # referenced packages
-        self.packages = {"context", "fmt", "strings", "github.com/jackc/pgx/v5", os.path.join(args.gomodule, 'models')}
+        self.core_packages = {"context", "fmt", "strings"}
+        self.external_packages = {"github.com/jackc/pgx/v5"}
+        self.model_packages = {os.path.join(args.gomodule, 'models')}
 
         # This is the Go struct name
         self.goname = to_camelcase(self.model_name)
@@ -894,9 +901,6 @@ class Model:
     @property
     def db_table(self):
         return self.model._meta.db_table
-
-    def reference_package(self, package: str):
-        self.packages.add(package)
 
     def get_field_by_raw_name(self, name: str) -> Field:
         for f in self.fields:
