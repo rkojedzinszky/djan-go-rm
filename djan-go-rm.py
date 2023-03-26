@@ -591,6 +591,10 @@ func (qs {{ model.qsname }}) All(db models.DBInterface) ([]*{{ model.goname }}, 
         ret = append(ret, &obj)
     }
 
+    if err = rows.Err(); err != nil {
+        return nil, err
+    }
+
     return ret, nil
 }
 
