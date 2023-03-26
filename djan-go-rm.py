@@ -601,6 +601,10 @@ func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ({{
         ret = append(ret, &obj)
     }
 
+    if err = rows.Err(); err != nil {
+        return nil, err
+    }
+
     return ret, nil
 }
 
