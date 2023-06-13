@@ -831,7 +831,11 @@ func ({{ receiver }}l {{ model.goname }}List)Save(ctx context.Context, db models
         {{ receiver }}.existsInDB = true
     }
 
+{% if model.auto_fields %}
+    return rows.Err()
+{%- else -%}
     return nil
+{% endif %}
 }
 
 {% for field in model.reverse_fields -%}
