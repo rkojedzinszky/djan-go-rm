@@ -257,6 +257,7 @@ type {{ model.goname }}List []*{{ model.goname }}
 
 // {{ model.qsname }} represents a queryset for {{ model.label }}
 type {{ model.qsname }} struct {
+    distinctOnFields []string
     condFragments models.AndFragment
     order []string
     forClause string
@@ -290,6 +291,7 @@ func (qs {{ model.qsname }}) Or(exprs ...{{ model.qsname }}) {{ model.qsname }} 
 }
 
 {% for field in model.concrete_fields -%}
+// BEGIN - {{ field.field }}
 
 {% if field.relmodel -%}
 // Get{{ field.pubname }} returns {{ field.related_model_goname }}
@@ -497,6 +499,15 @@ func (qs {{ model.qsname }}) OrderBy{{ field.pubname }}Desc() {{ model.qsname }}
     return qs
 }
 
+// DistinctOn{{ field.pubname }} marks field in queries to add to DISTINCT ON clause
+func (qs {{ model.qsname }})DistinctOn{{ field.pubname }}() {{ model.qsname }} {
+    qs.distinctOnFields = append(qs.distinctOnFields, `{{ field.db_column | string }}`)
+
+    return qs
+}
+
+// END - {{ field.field }}
+
 {% endfor -%}
 
 // OrderByRandom randomizes result
@@ -552,14 +563,19 @@ func (qs {{ model.qsname }}) orderByClause() string {
     return " ORDER BY " + strings.Join(qs.order, ", ")
 }
 
-func (qs {{ model.qsname }}) queryFull() (string, []interface{}) {
+func (qs {{ model.qsname }}) queryFull(distinctOnFields []string) (string, []interface{}) {
     c := &models.PositionalCounter{}
 
     s, p := qs.whereClause(c)
     s += qs.orderByClause()
     s += qs.forClause
 
-    return `{{ select_stmt }}` + s, p
+    var distinctClause string
+    if len(distinctOnFields) > 0 {
+        distinctClause = fmt.Sprintf("DISTINCT ON (%s) ", strings.Join(distinctOnFields, ", "))
+    }
+
+    return `SELECT ` + distinctClause + `{{ select_fields }} FROM "{{ model.db_table }}"` + s, p
 }
 
 // QueryId returns statement and parameters suitable for embedding in IN clause
@@ -575,7 +591,14 @@ func (qs {{ model.qsname }}) Count(ctx context.Context, db models.DBInterface) (
 
     s, p := qs.whereClause(c)
 
-    row := db.QueryRow(ctx, `{{ select_count_stmt }}` + s, p...)
+    var countClause string
+    if len(qs.distinctOnFields) > 0 {
+        countClause = fmt.Sprintf("DISTINCT (%s)", strings.Join(qs.distinctOnFields, ", "))
+    } else {
+        countClause = `"{{ model.pk.db_column }}"`
+    }
+
+    row := db.QueryRow(ctx, `SELECT COUNT(` + countClause + `) FROM "{{ model.db_table }}"` + s, p...)
 
     err = row.Scan(&count)
 
@@ -584,7 +607,7 @@ func (qs {{ model.qsname }}) Count(ctx context.Context, db models.DBInterface) (
 
 // All returns all rows matching queryset filters
 func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ({{ model.goname }}List, error) {
-    s, p := qs.queryFull()
+    s, p := qs.queryFull(qs.distinctOnFields)
 
     rows, err := db.Query(ctx, s, p...)
     if err != nil {
@@ -610,7 +633,7 @@ func (qs {{ model.qsname }}) All(ctx context.Context, db models.DBInterface) ({{
 
 // First returns the first row matching queryset filters, others are discarded
 func (qs {{ model.qsname }}) First(ctx context.Context, db models.DBInterface) (*{{ model.goname }}, error) {
-    s, p := qs.queryFull()
+    s, p := qs.queryFull(nil)
 
     s += " LIMIT 1"
 
@@ -964,16 +987,9 @@ class Model:
 
         receiver = self.goname[:1].lower()
 
-        select_stmt = 'SELECT {} FROM "{}"'.format(
-            ', '.join(["\"{}\"".format(f.db_column) for f in self.concrete_fields]),
-            self.db_table,
-        )
+        select_fields = ', '.join(["\"{}\"".format(f.db_column) for f in self.concrete_fields])
         select_member_ptrs = ', '.join(["&obj.{}".format(f.goname) for f in self.concrete_fields])
         select_id_stmt = 'SELECT "{}" FROM "{}"'.format(
-            self.pk.db_column,
-            self.db_table,
-        )
-        select_count_stmt = 'SELECT COUNT("{}") FROM "{}"'.format(
             self.pk.db_column,
             self.db_table,
         )
@@ -1025,10 +1041,9 @@ class Model:
                 model=self,
                 receiver=receiver,
 
-                select_stmt=select_stmt,
+                select_fields=select_fields,
                 select_member_ptrs=select_member_ptrs,
                 select_id_stmt=select_id_stmt,
-                select_count_stmt=select_count_stmt,
 
                 batch_insert_stmt=batch_insert_stmt,
                 insert_stmt=insert_stmt,
