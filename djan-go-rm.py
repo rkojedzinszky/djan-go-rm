@@ -5,6 +5,7 @@ import argparse
 import pathlib
 import shutil
 import subprocess
+import json
 from typing import List, Mapping
 
 import jinja2
@@ -56,6 +57,9 @@ class Field:
     def __init__(self, m: 'Model', f: fields.Field):
         self.model = m
         self.field = f
+
+        # Original raw field type
+        self.origrawtype: str = None
 
         # Raw field type
         self.rawtype: str = None
@@ -193,6 +197,14 @@ class Field:
         if self.rawtype is None:
             return
 
+        # convert fields with choices to Go types
+        if self.field.choices:
+            self.origrawtype = self.rawtype
+
+            self.rawtype = '{}_{}'.format(self.model.goname, self.pubname)
+
+            self.choices = map(lambda x: (x[0], json.dumps(x[0])), self.field.choices)
+
         if self.gotype is None:
             if self.null:
                 self.model.core_packages.add("database/sql")
@@ -243,6 +255,18 @@ import (
     {{ p | string -}}
 {% endfor %}
 )
+
+{% for f in model.fields %}
+{% if f.origrawtype %}
+// {{ f.rawtype }} {{ f.origrawtype }} represents choices for {{ model.goname }}.{{ f.goname }}
+type {{ f.rawtype }} {{ f.origrawtype }}
+const (
+{% for (choice, goval) in f.choices %}
+    {{ f.rawtype }}_{{ choice | capitalize }} {{ f.rawtype }} = {{ goval }}
+{%- endfor %}
+)
+{% endif %}
+{% endfor %}
 
 // {{ model.goname }} mirrors model {{ model.label }}
 type {{ model.goname }} struct {
