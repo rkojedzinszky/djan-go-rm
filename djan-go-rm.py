@@ -1007,12 +1007,14 @@ class Model:
 
         options: Options = self.model._meta
 
+        reverse_map: Mapping[str, List[Field]] = dict()
+
         for f in options.get_fields():
             field = Field(self, f)
             field.setup()
 
             if field.reverse:
-                self.reverse_fields.append(field)
+                reverse_map.setdefault(field.relmodel.model._meta.label, []).append(field)
                 continue
 
             # Skip not supported fields (e.g. unknown type, non-concrete)
@@ -1033,6 +1035,10 @@ class Model:
                 self.auto_fields.append(field)
             elif not is_pkey:
                 self.user_fields.append(field)
+
+        for _, field_list in reverse_map.items():
+            if len(field_list) == 1:
+                self.reverse_fields.append(field_list[0])
 
         if self.pk:
             if self.pkvalue is None:
