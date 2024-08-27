@@ -415,6 +415,28 @@ func (qs {{ model.qsname }}) {{ field.pubname }}In(oqs {{ field.related_model_qs
     return qs
 }
 
+type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
+    qs {{ field.related_model_qsname }}
+}
+
+func (nin *notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+    s, p := in.qs.QueryId(c)
+
+    return `{{ field.db_column | string }} NOT IN (` + s + `)`, p
+}
+
+
+func (qs {{ model.qsname }}) {{ field.pubname }}NotIn(oqs {{ field.related_model_qsname }}) {{ model.qsname }} {
+    qs.condFragments = append(
+        qs.condFragments,
+        &notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}{
+            qs: oqs,
+        },
+    )
+
+    return qs
+}
+
 
 {% else -%}
 // {{ field.pubname }}Eq filters for {{ field.goname }} being equal to argument
