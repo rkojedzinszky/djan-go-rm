@@ -420,7 +420,7 @@ type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct
 }
 
 func (nin *notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
-    s, p := in.qs.QueryId(c)
+    s, p := nin.qs.QueryId(c)
 
     return `{{ field.db_column | string }} NOT IN (` + s + `)`, p
 }
