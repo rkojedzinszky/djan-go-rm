@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import json
+import re
 from typing import List, Mapping
 
 import jinja2
@@ -203,7 +204,7 @@ class Field:
 
             self.rawtype = '{}_{}'.format(self.model.goname, self.pubname)
 
-            self.choices = map(lambda x: (x[0], json.dumps(x[0])), self.field.choices)
+            self.choices = map(lambda x: (x[1], json.dumps(x[0])), self.field.choices)
 
         if self.gotype is None:
             if self.null:
@@ -262,7 +263,7 @@ import (
 type {{ f.rawtype }} {{ f.origrawtype }}
 const (
 {% for (choice, goval) in f.choices %}
-    {{ f.rawtype }}_{{ choice | capitalize }} {{ f.rawtype }} = {{ goval }}
+    {{ f.rawtype }}_{{ choice | go_choice }} {{ f.rawtype }} = {{ goval }}
 {%- endfor %}
 )
 {% endif %}
@@ -1203,6 +1204,10 @@ class Apps:
         return self.apps[label]
 
 
+def go_choice(val: str) -> str:
+    return re.sub('[^a-zA-Z0-9]', '_', ''.join(map(str.capitalize, val.replace(' ', '-').split('-')))).removesuffix('_')
+
+
 if __name__ == '__main__':
     import sys
     import os
@@ -1221,6 +1226,7 @@ if __name__ == '__main__':
 
     jenv = jinja2.Environment()
     jenv.filters['string'] = lambda x: "\"{}\"".format(x)
+    jenv.filters['go_choice'] = go_choice
     tmpl = jenv.from_string(_model_template)
 
     apps = Apps(commandline=commandline)
