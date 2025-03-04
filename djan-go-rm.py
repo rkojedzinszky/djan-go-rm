@@ -91,9 +91,6 @@ class Field:
         # Null setting
         self.null: bool = self.field.null
 
-        # raw value in null struct
-        self.nullvalue: str = None
-
         # Is this field an autofield
         self.autofield: bool = False
 
@@ -224,10 +221,6 @@ class Field:
                 self.rawmember = '{}.{}'.format(self.goname, GO_NULLTYPES_VALUES.get(self.rawtype, None))
             else:
                 self.rawmember = self.goname
-
-        if self.null:
-            if self.nullvalue is None:
-                self.nullvalue = GO_NULLTYPES_VALUES.get(self.rawtype, None)
 
 
 _model_template = """
