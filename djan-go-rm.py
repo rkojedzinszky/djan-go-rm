@@ -15,6 +15,10 @@ from django.db import models
 from django.db.models import fields
 from django.db.models.options import Options
 from django.contrib.postgres import fields as pgfields
+try:
+    import netfields
+except:
+    netfields = None
 
 GO_BOOL = "bool"
 GO_NULLBOOL = "sql.NullBool"
@@ -28,6 +32,8 @@ GO_DATETIME = "time.Time"
 GO_NULLDATETIME = "sql.NullTime"
 GO_STRING = "string"
 GO_NULLSTRING = "sql.NullString"
+GO_NETIP = "net.IP"
+GO_HARDWAREADDR = "net.HardwareAddr"
 
 GO_NULLTYPES = {
     GO_BOOL: GO_NULLBOOL,
@@ -38,6 +44,7 @@ GO_NULLTYPES = {
     GO_STRING: GO_NULLSTRING,
 }
 
+# These represent member names in database/sql sql.Null* structures
 GO_NULLTYPES_VALUES = {
     GO_BOOL: 'Bool',
     GO_INT64: 'Int64',
@@ -182,6 +189,16 @@ class Field:
         if isinstance(f, (fields.DateField, fields.DateTimeField, fields.TimeField)):
             self.model.core_packages.add("time")
             return GO_DATETIME
+        if isinstance(f, models.GenericIPAddressField):
+            self.model.core_packages.add("net")
+            return GO_NETIP
+        if netfields:
+            if isinstance(f, netfields.InetAddressField):
+                self.model.core_packages.add("net")
+                return GO_NETIP
+            if isinstance(f, netfields.MACAddressField):
+                self.model.core_packages.add("net")
+                return GO_HARDWAREADDR
 
         return GO_STRING
 
