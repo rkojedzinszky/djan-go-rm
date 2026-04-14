@@ -55,7 +55,7 @@ func (p *PositionalCounter) Get() string {
 // ConditionFragment represents a condition fragment
 type ConditionFragment interface {
 	// GetConditionFragment returns ConditionFragment stringified
-	GetConditionFragment(*PositionalCounter) (string, []interface{})
+	GetConditionFragment(*PositionalCounter) (string, []any)
 }
 
 // ConstantFragment holds constant expression, without parameters
@@ -64,28 +64,32 @@ type ConstantFragment struct {
 }
 
 // GetConditionFragment returns the constant fragment
-func (c *ConstantFragment) GetConditionFragment(*PositionalCounter) (string, []interface{}) {
+func (c *ConstantFragment) GetConditionFragment(*PositionalCounter) (string, []any) {
 	return c.Constant, nil
 }
 
 // UnaryFragment holds fragment with one parameter
 type UnaryFragment struct {
 	Frag  string
-	Param interface{}
+	Param any
 }
 
 // GetConditionFragment returns fragment with its parameter
-func (u *UnaryFragment) GetConditionFragment(p *PositionalCounter) (string, []interface{}) {
-	return u.Frag + " " + p.Get(), []interface{}{u.Param}
+func (u *UnaryFragment) GetConditionFragment(p *PositionalCounter) (string, []any) {
+	return u.Frag + " " + p.Get(), []any{u.Param}
 }
 
 // AndFragment combines sub-fragments with AND operator
 type AndFragment []ConditionFragment
 
 // GetConditionFragment returns fragment with its parameter
-func (a AndFragment) GetConditionFragment(c *PositionalCounter) (string, []interface{}) {
+func (a AndFragment) GetConditionFragment(c *PositionalCounter) (string, []any) {
+	if len(a) == 0 {
+		return "true", nil
+	}
+
 	var conds []string
-	var condp []interface{}
+	var condp []any
 
 	for _, cond := range a {
 		s, p := cond.GetConditionFragment(c)
@@ -101,13 +105,13 @@ func (a AndFragment) GetConditionFragment(c *PositionalCounter) (string, []inter
 type OrFragment []ConditionFragment
 
 // GetConditionFragment returns fragment with its parameter
-func (o OrFragment) GetConditionFragment(c *PositionalCounter) (string, []interface{}) {
-	var conds []string
-	var condp []interface{}
-
+func (o OrFragment) GetConditionFragment(c *PositionalCounter) (string, []any) {
 	if len(o) == 0 {
 		return "false", nil
 	}
+
+	var conds []string
+	var condp []any
 
 	for _, cond := range o {
 		s, p := cond.GetConditionFragment(c)
