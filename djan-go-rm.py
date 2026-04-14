@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import json
 import re
-from typing import List, Mapping
+from typing import List, Mapping, Optional
 
 import jinja2
 from django.apps import AppConfig, apps
@@ -17,7 +17,7 @@ from django.db.models.options import Options
 from django.contrib.postgres import fields as pgfields
 try:
     import netfields
-except:
+except ImportError:
     netfields = None
 
 GO_BOOL = "bool"
@@ -67,26 +67,26 @@ class Field:
         self.field = f
 
         # Original raw field type
-        self.origrawtype: str = None
+        self.origrawtype: Optional[str] = None
 
         # Raw field type
-        self.rawtype: str = None
+        self.rawtype: Optional[str] = None
 
         # Struct member name
         self.goname = to_camelcase(f.name)
-        self.pubname: str = None
+        self.pubname: Optional[str] = None
 
         # Struct member type
-        self.gotype: str = None
+        self.gotype: Optional[str] = None
 
         # Raw type member
-        self.rawmember: str = None   # raw type member
+        self.rawmember: Optional[str] = None   # raw type member
 
         # getter, if defined, will be generated to return struct member
-        self.getter: str = None
+        self.getter: Optional[str] = None
 
         # if relmodel is defined too, then getter will return that model instead
-        self.relmodel: 'Model' = None
+        self.relmodel: Optional['Model'] = None
 
         # if reverse is defined, then the field is virtual, a reverse relation is in place
         # and a queryset will be returned
@@ -100,6 +100,9 @@ class Field:
 
         # Is this field an autofield
         self.autofield: bool = False
+
+        # Choices for choice fields
+        self.choices: Optional[list] = None
 
     @property
     def db_column(self):
@@ -218,7 +221,7 @@ class Field:
 
             self.rawtype = '{}_{}'.format(self.model.goname, self.pubname)
 
-            self.choices = map(lambda x: (x[1], json.dumps(x[0])), self.field.choices)
+            self.choices = [(x[1], json.dumps(x[0])) for x in self.field.choices]
 
         if self.gotype is None:
             if self.null:
@@ -298,7 +301,7 @@ type {{ model.qsname }} struct {
     forClause string
 }
 
-func (qs {{ model.qsname }}) filter(c string, p interface{}) {{ model.qsname }} {
+func (qs {{ model.qsname }}) filter(c string, p any) {{ model.qsname }} {
     qs.condFragments = append(
         qs.condFragments,
         &models.UnaryFragment{
@@ -408,7 +411,7 @@ type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct {
     qs {{ field.related_model_qsname }}
 }
 
-func (in *in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+func (in *in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []any) {
     s, p := in.qs.QueryId(c)
 
     return `{{ field.db_column | string }} IN (` + s + `)`, p
@@ -430,7 +433,7 @@ type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} struct
     qs {{ field.related_model_qsname }}
 }
 
-func (nin *notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+func (nin *notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []any) {
     s, p := nin.qs.QueryId(c)
 
     return `{{ field.db_column | string }} NOT IN (` + s + `)`, p
@@ -482,9 +485,9 @@ func (qs {{ model.qsname }}) {{ field.pubname }}Ge(v {{ field.rawtype }}) {{ mod
 }
 {% endif %}
 
-type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} []interface{}
+type in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} []any
 
-func (in in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+func (in in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []any) {
     if len(in) == 0 {
         return `false`, nil
     }
@@ -498,7 +501,7 @@ func (in in{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetC
 }
 
 func (qs {{ model.qsname }}) {{ field.pubname }}In(values []{{ field.rawtype }}) {{ model.qsname }} {
-    var vals []interface{}
+    var vals []any
     for _, v := range values {
         vals = append(vals, v)
     }
@@ -511,11 +514,11 @@ func (qs {{ model.qsname }}) {{ field.pubname }}In(values []{{ field.rawtype }})
     return qs
 }
 
-type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} []interface{}
+type notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }} []any
 
-func (in notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []interface{}) {
+func (in notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) GetConditionFragment(c *models.PositionalCounter) (string, []any) {
     if len(in) == 0 {
-        return `false`, nil
+        return `true`, nil
     }
 
     var params []string
@@ -527,7 +530,7 @@ func (in notin{{ model.goname }}{{ field.goname }}{{ field.relmodel.goname }}) G
 }
 
 func (qs {{ model.qsname }}) {{ field.pubname }}NotIn(values []{{ field.rawtype }}) {{ model.qsname }} {
-    var vals []interface{}
+    var vals []any
     for _, v := range values {
         vals = append(vals, v)
     }
@@ -602,7 +605,7 @@ func (qs {{ model.qsname }}) ClearForUpdate() {{ model.qsname }} {
     return qs
 }
 
-func (qs {{ model.qsname }}) whereClause(c *models.PositionalCounter) (string, []interface{}) {
+func (qs {{ model.qsname }}) whereClause(c *models.PositionalCounter) (string, []any) {
     if len(qs.condFragments) == 0 {
         return "", nil
     }
@@ -620,7 +623,7 @@ func (qs {{ model.qsname }}) orderByClause() string {
     return " ORDER BY " + strings.Join(qs.order, ", ")
 }
 
-func (qs {{ model.qsname }}) queryFull(distinctOnFields []string) (string, []interface{}) {
+func (qs {{ model.qsname }}) queryFull(distinctOnFields []string) (string, []any) {
     c := &models.PositionalCounter{}
 
     s, p := qs.whereClause(c)
@@ -636,7 +639,7 @@ func (qs {{ model.qsname }}) queryFull(distinctOnFields []string) (string, []int
 }
 
 // QueryId returns statement and parameters suitable for embedding in IN clause
-func (qs {{ model.qsname }}) QueryId(c *models.PositionalCounter) (string, []interface{}) {
+func (qs {{ model.qsname }}) QueryId(c *models.PositionalCounter) (string, []any) {
     s, p := qs.whereClause(c)
 
     return `{{ select_id_stmt }}` + s, p
@@ -735,7 +738,7 @@ type {{ model.uqsname }} struct {
     condFragments []models.ConditionFragment
 }
 
-func (uqs {{ model.uqsname }}) update(c string, v interface{}) {{ model.uqsname }} {
+func (uqs {{ model.uqsname }}) update(c string, v any) {{ model.uqsname }} {
     var frag models.ConditionFragment
 
     if v == nil {
@@ -785,7 +788,7 @@ func (uqs {{ model.uqsname }}) Exec(ctx context.Context, db models.DBInterface) 
 
     c := &models.PositionalCounter{}
 
-    var params []interface{}
+    var params []any
 
     var sets []string
     for _, set := range uqs.updates {
