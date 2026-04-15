@@ -107,7 +107,7 @@ type OrFragment []ConditionFragment
 // GetConditionFragment returns fragment with its parameter
 func (o OrFragment) GetConditionFragment(c *PositionalCounter) (string, []any) {
 	if len(o) == 0 {
-		return "false", nil
+		return "true", nil
 	}
 
 	var conds []string
