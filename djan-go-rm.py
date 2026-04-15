@@ -853,7 +853,9 @@ func ({{ receiver }} *{{ model.goname }}) Save(ctx context.Context, db models.DB
 func ({{ receiver }} *{{ model.goname }}) Delete(ctx context.Context, db models.DBInterface) error {
     _, err := db.Exec(ctx, `{{ delete_stmt }}`, {{ receiver }}.{{ model.pk.goname }})
 
-    {{ receiver }}.existsInDB = false
+    if err == nil {
+        {{ receiver }}.existsInDB = false
+    }
 
     return err
 }
