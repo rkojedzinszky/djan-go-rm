@@ -162,6 +162,9 @@ class Field:
         if isinstance(f, (fields.DateField, fields.DateTimeField, fields.TimeField)):
             self.model.core_packages.add("time")
             return GO_DATETIME
+        if isinstance(f, fields.DurationField):
+            self.model.core_packages.add("time")
+            return GO_TIMEDELTA
         if isinstance(f, models.GenericIPAddressField):
             self.model.core_packages.add("net")
             return GO_NETIP
