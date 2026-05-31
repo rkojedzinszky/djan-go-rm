@@ -21,38 +21,14 @@ except ImportError:
     netfields = None
 
 GO_BOOL = "bool"
-GO_NULLBOOL = "sql.NullBool"
 GO_INT64 = "int64"
-GO_NULLINT64 = "sql.NullInt64"
 GO_INT32 = "int32"
-GO_NULLINT32 = "sql.NullInt32"
 GO_FLOAT64 = "float64"
-GO_NULLFLOAT64 = "sql.NullFloat64"
 GO_DATETIME = "time.Time"
-GO_NULLDATETIME = "sql.NullTime"
+GO_TIMEDELTA = "time.Duration"
 GO_STRING = "string"
-GO_NULLSTRING = "sql.NullString"
 GO_NETIP = "net.IP"
 GO_HARDWAREADDR = "net.HardwareAddr"
-
-GO_NULLTYPES = {
-    GO_BOOL: GO_NULLBOOL,
-    GO_INT64: GO_NULLINT64,
-    GO_INT32: GO_NULLINT32,
-    GO_FLOAT64: GO_NULLFLOAT64,
-    GO_DATETIME: GO_NULLDATETIME,
-    GO_STRING: GO_NULLSTRING,
-}
-
-# These represent member names in database/sql sql.Null* structures
-GO_NULLTYPES_VALUES = {
-    GO_BOOL: 'Bool',
-    GO_INT64: 'Int64',
-    GO_INT32: 'Int32',
-    GO_FLOAT64: 'Float64',
-    GO_DATETIME: 'Time',
-    GO_STRING: 'String',
-}
 
 
 def to_camelcase(word):
@@ -75,12 +51,6 @@ class Field:
         # Struct member name
         self.goname = to_camelcase(f.name)
         self.pubname: Optional[str] = None
-
-        # Struct member type
-        self.gotype: Optional[str] = None
-
-        # Raw type member
-        self.rawmember: Optional[str] = None   # raw type member
 
         # getter, if defined, will be generated to return struct member
         self.getter: Optional[str] = None
@@ -223,24 +193,11 @@ class Field:
 
             self.choices = [(x[1], json.dumps(x[0])) for x in self.field.choices]
 
-        if self.gotype is None:
-            if self.null:
-                self.model.core_packages.add("database/sql")
-                self.gotype = GO_NULLTYPES.get(self.rawtype, self.rawtype)
-            else:
-                self.gotype = self.rawtype
-
         if not self._public:
             if self.goname.lower() == 'id':
                 self.goname = 'id'
             else:
                 self.goname = self.goname[:1].lower() + self.goname[1:]
-
-        if self.rawmember is None:
-            if self.null:
-                self.rawmember = '{}.{}'.format(self.goname, GO_NULLTYPES_VALUES.get(self.rawtype, None))
-            else:
-                self.rawmember = self.goname
 
 
 _model_template = """
@@ -286,7 +243,7 @@ const (
 type {{ model.goname }} struct {
     existsInDB bool
 {% for field in model.concrete_fields %}
-    {{ field.goname }} {{ field.gotype }}
+    {{ field.goname }} {% if field.null %}*{% endif %}{{ field.rawtype }}
 {%- endfor %}
 }
 
@@ -335,21 +292,21 @@ func (qs {{ model.qsname }}) Or(exprs ...{{ model.qsname }}) {{ model.qsname }} 
 // Get{{ field.pubname }} returns {{ field.related_model_goname }}
 func ({{ receiver }} *{{ model.goname }}) Get{{ field.pubname }}(ctx context.Context, db models.DBInterface) (*{{ field.related_model_goname }}, error) {
 {%- if field.null %}
-    if !{{ receiver }}.{{ field.goname }}.Valid {
+    if {{ receiver }}.{{ field.goname }} == nil {
         return nil, nil
     }
 {% endif %}
-    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({{ receiver }}.{{ field.rawmember}}).First(ctx, db)
+    return {{ field.related_model_qsname }}{{ "{}" }}.{{ field.relmodel.pk.pubname }}Eq({% if field.null %}*{% endif %}{{ receiver }}.{{ field.goname }}).First(ctx, db)
 }
 
 // Set{{ field.pubname }} sets foreign key pointer to {{ field.related_model_goname }}
 func ({{ receiver }} *{{ model.goname }}) Set{{ field.pubname }}(ptr *{{ field.related_model_goname }}) error {
 {%- if field.null %}
     if ptr != nil {
-        {{ receiver }}.{{ field.rawmember }} = ptr.{{ field.relmodel.pkvalue }}
-        {{ receiver }}.{{ field.goname }}.Valid = true
+        pkvalue := ptr.{{ field.relmodel.pkvalue }}
+        {{ receiver }}.{{ field.goname }} = &pkvalue
     } else {
-        {{ receiver }}.{{ field.goname }}.Valid = false
+        {{ receiver }}.{{ field.goname }} = nil
     }
 {%- else %}
     if ptr != nil {
@@ -365,7 +322,7 @@ func ({{ receiver }} *{{ model.goname }}) Set{{ field.pubname }}(ptr *{{ field.r
 {% endif -%}
 {% if field.getter -%}
 // {{ field.getter }} returns {{ model.goname }}.{{ field.pubname }}
-func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {{ field.gotype }} {
+func ({{ receiver }} *{{ model.goname }}) {{ field.getter }}() {% if field.null %}*{% endif %}{{ field.rawtype }} {
     return {{ receiver }}.{{ field.goname }}
 }
 
@@ -772,7 +729,7 @@ func (uqs {{ model.uqsname }}) Set{{ field.pubname }}(ptr *{{ field.related_mode
 {%- else -%}
 
 // Set{{ field.pubname }} sets {{ field.pubname }} to the given value
-func (uqs {{ model.uqsname }}) Set{{ field.pubname }}(v {{ field.gotype }}) {{ model.uqsname }} {
+func (uqs {{ model.uqsname }}) Set{{ field.pubname }}(v {% if field.null %}*{% endif %}{{ field.rawtype }}) {{ model.uqsname }} {
     return uqs.update(`{{ field.db_column | string }}`, v)
 }
 
