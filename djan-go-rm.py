@@ -28,6 +28,7 @@ GO_DATETIME = "time.Time"
 GO_TIMEDELTA = "time.Duration"
 GO_STRING = "string"
 GO_NETIP = "net.IP"
+GO_NETIPNET = "net.IPNet"
 GO_HARDWAREADDR = "net.HardwareAddr"
 
 
@@ -171,7 +172,7 @@ class Field:
         if netfields:
             if isinstance(f, netfields.InetAddressField):
                 self.model.core_packages.add("net")
-                return GO_NETIP
+                return GO_NETIPNET
             if isinstance(f, netfields.MACAddressField):
                 self.model.core_packages.add("net")
                 return GO_HARDWAREADDR
