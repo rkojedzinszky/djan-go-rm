@@ -1,0 +1,4 @@
+django<6
+psycopg
+django-netfields
+jinja2

@@ -1,0 +1,326 @@
+[
+  {
+    "model": "djangormtestapp.author",
+    "pk": 1,
+    "fields": {
+      "name": "John Doe",
+      "email": "john@example.com",
+      "is_active": true,
+      "birth_date": "1985-06-15",
+      "bio": "Senior software developer with 10 years of experience"
+    }
+  },
+  {
+    "model": "djangormtestapp.author",
+    "pk": 2,
+    "fields": {
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "is_active": true,
+      "birth_date": "1990-03-22",
+      "bio": "DevOps engineer specializing in cloud infrastructure"
+    }
+  },
+  {
+    "model": "djangormtestapp.author",
+    "pk": 3,
+    "fields": {
+      "name": "Bob Johnson",
+      "email": "bob@example.com",
+      "is_active": false,
+      "birth_date": "1982-11-08",
+      "bio": null
+    }
+  },
+  {
+    "model": "djangormtestapp.author",
+    "pk": 4,
+    "fields": {
+      "name": "Alice Williams",
+      "email": "alice@example.com",
+      "is_active": true,
+      "birth_date": "1988-09-30",
+      "bio": "Full-stack developer and security enthusiast"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 1,
+    "fields": {
+      "title": "Django Basics",
+      "content": "A comprehensive guide to getting started with Django web framework",
+      "author": 1,
+      "view_count": 2450,
+      "priority": 2,
+      "large_number": 1000000,
+      "rating": 4.5,
+      "publish_date": "2024-01-15",
+      "publish_time": "10:30:00",
+      "is_published": true,
+      "author_ip": "2.0.0.2",
+      "author_inet": "2.0.0.2/32",
+      "author_mac": "aa:bb:cc:dd:ee:ff",
+      "read_duration": "00:15:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 2,
+    "fields": {
+      "title": "Advanced Django",
+      "content": "Explore advanced patterns and best practices for Django applications",
+      "author": 1,
+      "view_count": 1850,
+      "priority": 1,
+      "large_number": 5000000,
+      "rating": 4.8,
+      "publish_date": "2024-02-10",
+      "publish_time": "14:00:00",
+      "is_published": true,
+      "author_ip": "10.0.0.2",
+      "author_inet": "10.0.0.2/32",
+      "author_mac": "11:22:33:44:55:66",
+      "read_duration": "00:25:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 3,
+    "fields": {
+      "title": "Testing in Django",
+      "content": "Unit testing, integration testing, and test automation strategies",
+      "author": 2,
+      "view_count": 1250,
+      "priority": 2,
+      "large_number": 2000000,
+      "rating": 4.3,
+      "publish_date": "2024-02-20",
+      "publish_time": "09:15:00",
+      "is_published": true,
+      "author_ip": "10.0.0.10",
+      "author_inet": "10.0.0.10/32",
+      "author_mac": "aa:aa:aa:aa:aa:aa",
+      "read_duration": "00:20:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 4,
+    "fields": {
+      "title": "API Design",
+      "content": "Building scalable and maintainable REST APIs",
+      "author": 2,
+      "view_count": 350,
+      "priority": 3,
+      "large_number": null,
+      "rating": 3.9,
+      "publish_date": "2024-03-05",
+      "publish_time": null,
+      "is_published": false,
+      "author_ip": "10.0.0.3",
+      "author_inet": "10.0.0.3/32",
+      "author_mac": "bb:bb:bb:bb:bb:bb",
+      "read_duration": "00:18:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 5,
+    "fields": {
+      "title": "Database Optimization",
+      "content": "Query optimization, indexing strategies, and performance tuning",
+      "author": 3,
+      "view_count": 3100,
+      "priority": 1,
+      "large_number": 7500000,
+      "rating": 4.7,
+      "publish_date": "2024-01-25",
+      "publish_time": "11:45:00",
+      "is_published": true,
+      "author_ip": "172.16.0.1",
+      "author_inet": "172.16.0.1/32",
+      "author_mac": "cc:cc:cc:cc:cc:cc",
+      "read_duration": "00:30:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 6,
+    "fields": {
+      "title": "Security Best Practices",
+      "content": "Securing your web applications against common threats",
+      "author": 4,
+      "view_count": 2800,
+      "priority": 1,
+      "large_number": 9000000,
+      "rating": 4.9,
+      "publish_date": "2024-02-01",
+      "publish_time": "13:30:00",
+      "is_published": true,
+      "author_ip": "203.0.113.1",
+      "author_inet": "203.0.113.1/32",
+      "author_mac": "dd:dd:dd:dd:dd:dd",
+      "read_duration": "00:22:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 7,
+    "fields": {
+      "title": "CI/CD Pipelines",
+      "content": "Implementing continuous integration and deployment workflows",
+      "author": 4,
+      "view_count": 450,
+      "priority": 3,
+      "large_number": 1500000,
+      "rating": 4.1,
+      "publish_date": "2024-03-10",
+      "publish_time": null,
+      "is_published": false,
+      "author_ip": null,
+      "author_inet": null,
+      "author_mac": null,
+      "read_duration": null
+    }
+  },
+  {
+    "model": "djangormtestapp.article",
+    "pk": 8,
+    "fields": {
+      "title": "Docker Guide",
+      "content": "Containerizing applications with Docker for consistent deployments",
+      "author": 1,
+      "view_count": 2150,
+      "priority": 2,
+      "large_number": 4000000,
+      "rating": 4.6,
+      "publish_date": "2024-01-30",
+      "publish_time": "15:20:00",
+      "is_published": true,
+      "author_ip": "2.0.0.15",
+      "author_inet": "2.0.0.15/32",
+      "author_mac": "ee:ee:ee:ee:ee:ee",
+      "read_duration": "00:28:00"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 1,
+    "fields": {
+      "article": 1,
+      "reviewer_name": "Alice",
+      "rating": 5,
+      "comment": "Excellent introductory material",
+      "tags": ["beginner", "helpful", "clear"],
+      "scores": [5, 5, 4],
+      "reviewer_ip": "192.168.1.100",
+      "reviewer_inet": "192.168.1.100",
+      "reviewer_mac": "ff:00:11:22:33:44"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 2,
+    "fields": {
+      "article": 1,
+      "reviewer_name": "Bob",
+      "rating": 4,
+      "comment": "Good explanation with practical examples",
+      "tags": ["tutorial", "practical"],
+      "scores": [4, 4, 4],
+      "reviewer_ip": "192.168.1.101",
+      "reviewer_inet": "192.168.1.101",
+      "reviewer_mac": "00:11:22:33:44:55"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 3,
+    "fields": {
+      "article": 2,
+      "reviewer_name": "Charlie",
+      "rating": 5,
+      "comment": "Deep dive into Django internals, highly recommended",
+      "tags": ["advanced", "comprehensive", "must-read"],
+      "scores": [5, 5, 5],
+      "reviewer_ip": "192.168.1.102",
+      "reviewer_inet": "192.168.1.102",
+      "reviewer_mac": "11:22:33:44:55:66"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 4,
+    "fields": {
+      "article": 2,
+      "reviewer_name": "Diana",
+      "rating": 5,
+      "comment": "Perfect reference material",
+      "tags": ["reference", "professional"],
+      "scores": [5, 5, 4],
+      "reviewer_ip": null,
+      "reviewer_inet": null,
+      "reviewer_mac": null
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 5,
+    "fields": {
+      "article": 3,
+      "reviewer_name": "Eve",
+      "rating": 4,
+      "comment": "Comprehensive testing strategies",
+      "tags": ["testing", "quality"],
+      "scores": [4, 4, 4],
+      "reviewer_ip": "192.168.2.100",
+      "reviewer_inet": "192.168.2.100",
+      "reviewer_mac": "22:33:44:55:66:77"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 6,
+    "fields": {
+      "article": 5,
+      "reviewer_name": "Frank",
+      "rating": 5,
+      "comment": "Database optimization tips saved me hours",
+      "tags": ["performance", "optimization", "valuable"],
+      "scores": [5, 5, 5],
+      "reviewer_ip": "172.16.0.100",
+      "reviewer_inet": "172.16.0.100",
+      "reviewer_mac": "33:44:55:66:77:88"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 7,
+    "fields": {
+      "article": 6,
+      "reviewer_name": "Grace",
+      "rating": 5,
+      "comment": "Security is not an afterthought thanks to this guide",
+      "tags": ["security", "critical", "essential"],
+      "scores": [5, 5, 5],
+      "reviewer_ip": "203.0.113.100",
+      "reviewer_inet": "203.0.113.100",
+      "reviewer_mac": "44:55:66:77:88:99"
+    }
+  },
+  {
+    "model": "djangormtestapp.review",
+    "pk": 8,
+    "fields": {
+      "article": 8,
+      "reviewer_name": "Henry",
+      "rating": 4,
+      "comment": "Great Docker explanation",
+      "tags": ["docker", "containers", "devops"],
+      "scores": [4, 4, 5],
+      "reviewer_ip": "192.168.1.150",
+      "reviewer_inet": "192.168.1.150",
+      "reviewer_mac": "55:66:77:88:99:aa"
+    }
+  }
+]
