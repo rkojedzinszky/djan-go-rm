@@ -29,6 +29,7 @@ GO_TIMEDELTA = "time.Duration"
 GO_STRING = "string"
 GO_NETIP = "net.IP"
 GO_HARDWAREADDR = "net.HardwareAddr"
+GO_BYTES = "[]byte"
 
 
 def to_camelcase(word):
@@ -175,6 +176,8 @@ class Field:
             if isinstance(f, netfields.MACAddressField):
                 self.model.core_packages.add("net")
                 return GO_HARDWAREADDR
+        if isinstance(f, fields.BinaryField):
+            return GO_BYTES
 
         return GO_STRING
 
