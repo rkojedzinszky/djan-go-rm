@@ -15,6 +15,11 @@ generate_go_models() {
     DJANGO_SETTINGS_MODULE=djangormtest.settings ../djan-go-rm.py --gomodule djangormtest djangormtestapp
 }
 
+# migrate database
+migrate_database() {
+    python manage.py migrate
+}
+
 # populate database
 populate_database() {
     python manage.py loaddata djangormtestapp/fixtures/initial_data.json
@@ -26,5 +31,6 @@ run_tests() {
 }
 
 generate_go_models
+migrate_database
 populate_database
 run_tests
