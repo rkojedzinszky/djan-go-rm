@@ -1,0 +1,49 @@
+name: Test
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: djangormtest
+          POSTGRES_PASSWORD: djangormtest
+          POSTGRES_DB: djangormtest
+        ports:
+          - 15439:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Create Python virtualenv
+        run: |
+          python -m venv venv
+          echo "${{ github.workspace }}/venv/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        working-directory: djangormtest
+        run: pip install -r requirements.txt
+
+      - name: Set up Go dependencies
+        working-directory: djangormtest
+        run: go mod download
+
+      - name: Run tests
+        working-directory: djangormtest
+        run: ./runtest.sh
